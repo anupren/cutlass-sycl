@@ -7,6 +7,11 @@ on:
     branches: [ "main" ]
   schedule:
     - cron: '23 5 * * 5'
+  workflow_dispatch:
+    inputs:
+      DPCPP_VERSION:
+        description: "DPCPP version to use"
+        type: string
 
 permissions: {}
 
@@ -79,10 +84,17 @@ jobs:
       uses: github/codeql-action/analyze@2e230e8fe0ad3a14a340ad0815ddb96d599d2aff # v3.25.8
       with:
         category: "/language:${{matrix.language}}"
-    
-    - name: Upload Sarif Artifact
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+
+    - name: Upload C++ SARIF Artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: codeql-results-${{ matrix.language }}
-        path: ./results/${{ matrix.language }}.sarif
+        name: cpp-sarif-results
+        path: /__w/cutlass-sycl/results/cpp.sarif
+        retention-days: 7
+
+    - name: Upload Python SARIF Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-sarif-results
+        path: /__w/cutlass-sycl/results/python.sarif
         retention-days: 7
