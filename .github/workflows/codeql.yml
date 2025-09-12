@@ -89,4 +89,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: sarif-results
-        path: ../results/python.sarif
+        path: ${{ github.workspace }}/results/python.sarif
