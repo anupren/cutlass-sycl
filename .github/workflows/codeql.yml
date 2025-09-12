@@ -85,16 +85,8 @@ jobs:
       with:
         category: "/language:${{matrix.language}}"
 
-    - name: Upload C++ SARIF Artifact
+    - name: Upload SARIF Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: cpp-sarif-results
-        path: /__w/cutlass-sycl/results/cpp.sarif
-        retention-days: 7
-
-    - name: Upload Python SARIF Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: python-sarif-results
-        path: /__w/cutlass-sycl/results/python.sarif
-        retention-days: 7
+        name: sarif-results
+        path: ${{ github.workspace }}/results/*
