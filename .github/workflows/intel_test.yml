@@ -48,12 +48,12 @@ jobs:
             gpu: PVC
             intel_graphics: ROLLING
             sycl_target: intel_gpu_pvc
-            runner: pvc146162-01
+            runner: pvc
           - compiler: NIGHTLY
             gpu: PVC
             intel_graphics: ROLLING
             sycl_target: intel_gpu_pvc
-            runner: pvc146162-01
+            runner: pvc
 
     name: Run Intel ${{ matrix.compiler }} tests on ${{ matrix.gpu }} with intel-graphics ${{ matrix.intel_graphics }}
     runs-on: ${{ matrix.runner }}
@@ -103,7 +103,9 @@ jobs:
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=${{ matrix.sycl_target }} \
-            -DCUTLASS_SYCL_RUNNING_CI=ON
+            -DCUTLASS_SYCL_RUNNING_CI=ON \
+            -DCUTLASS_ENABLE BENCHMARKS=ON \
+            -DCUTLASS_ENABLE_TESTS=ON 
           # Use reduced parallelism for BMG runners, full for PVC
           if [[ "${{ matrix.gpu }}" == "BMG" ]]; then
             cmake --build . -j 2
