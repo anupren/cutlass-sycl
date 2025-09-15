@@ -45,7 +45,7 @@ runs:
           URL=https://github.com/intel/llvm/releases/download/${latest}/sycl_linux.tar.gz;
         fi
         echo "Downloading DPCPP from ${URL}"
-        sudo wget -q $URL
+        wget -q $URL
         sudo tar -xf sycl_linux.tar.gz
         sudo rm sycl_linux.tar.gz
         popd
