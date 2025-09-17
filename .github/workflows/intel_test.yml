@@ -125,7 +125,7 @@ jobs:
       - name: Benchmarks
         shell: bash
         run: |
-          cmake --build . --target cutlass_benchmarks
+          cmake --build . --target benchmarks
       - name: Cleanup DPC++
         if: always()
         shell: bash
