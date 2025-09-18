@@ -46,16 +46,16 @@ jobs:
           #   intel_graphics: ROLLING
           #   sycl_target: intel_gpu_bmg_g21
           #   runner: bmg
-          # - compiler: RELEASE
-          #   gpu: PVC
-          #   intel_graphics: ROLLING
-          #   sycl_target: intel_gpu_pvc
-          #   runner: pvc
-          - compiler: NIGHTLY
+          - compiler: RELEASE
             gpu: PVC
             intel_graphics: ROLLING
             sycl_target: intel_gpu_pvc
             runner: pvc
+          # - compiler: NIGHTLY
+          #   gpu: PVC
+          #   intel_graphics: ROLLING
+          #   sycl_target: intel_gpu_pvc
+          #   runner: pvc
 
     name: Run Intel ${{ matrix.compiler }} tests on ${{ matrix.gpu }} with intel-graphics ${{ matrix.intel_graphics }}
     runs-on: ${{ matrix.runner }}
