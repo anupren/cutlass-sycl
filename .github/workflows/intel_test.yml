@@ -105,6 +105,7 @@ jobs:
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=${{ matrix.sycl_target }} \
+            -DCUTLASS_SYCL_RUNNING_CI=ON \
             -DCUTLASS_ENABLE_BENCHMARKS=ON \
             -DCUTLASS_ENABLE_TESTS=ON 
           # Use reduced parallelism for BMG runners, full for PVC
