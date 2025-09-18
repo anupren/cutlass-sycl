@@ -26,6 +26,7 @@ runs:
       if: inputs.DPCPP_RELEASE == 'NIGHTLY'
       shell: bash
       run: |
+        set -x
         shopt -s expand_aliases
         which sudo || alias sudo=""
         export DPCPP_PATH=${{ inputs.DPCPP_PATH }}
