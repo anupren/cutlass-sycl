@@ -68,7 +68,7 @@ struct FMHADecodeOptions {
 
   FMHADecodeOptions()
       : error(false), batch(32), num_heads_q(16), num_heads_kv(16), seq_len_qo(1), head_size_qk(128),
-        seq_len_kv(512), seq_len_kv_cache(0), page_size(128), head_size_vo(128), iterations(1), softmax_scale(1.f), bm_name("Flash Attention v2 Decode") {}
+        seq_len_kv(512), seq_len_kv_cache(0), page_size(128), head_size_vo(128), iterations(100), softmax_scale(1.f), bm_name("Flash Attention v2 Decode") {}
 
   // Parses the command line
   void parse(int argc, char const **args) {
@@ -83,7 +83,7 @@ struct FMHADecodeOptions {
     cmd.get_cmd_line_argument("page_size", page_size, 128);
     cmd.get_cmd_line_argument("head_size_vo", head_size_vo, 128);
     cmd.get_cmd_line_argument("head_size_qk", head_size_qk, head_size_vo);
-    cmd.get_cmd_line_argument("iterations", iterations, 1);
+    cmd.get_cmd_line_argument("iterations", iterations, 100);
     cmd.get_cmd_line_argument("bm_name", bm_name, std::string("Flash Attention v2"));
 
     softmax_scale = 1 / std::sqrt(static_cast<float>(head_size_qk));
