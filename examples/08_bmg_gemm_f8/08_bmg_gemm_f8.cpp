@@ -1,5 +1,6 @@
 /***************************************************************************************************
  * Copyright (c) 2025 - 2025 Codeplay Software Ltd. All rights reserved.
+ * Copyright (C) 2025 Intel Corporation, All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -180,12 +181,12 @@ struct ExampleRunner {
       cutlass::DeviceAllocation<half_t> block_B_fp16(block_B.size());
 
       // fp8 -> fp16
-      convert_dtype<ElementA, half_t>(
+      convert_dtype<ElementA, half_t, ExampleRunner>(
           block_A.get(),
           block_A_fp16.get(),
           block_A.size()
       );
-      convert_dtype<ElementB, half_t>(
+      convert_dtype<ElementB, half_t, ExampleRunner>(
           block_B.get(),
           block_B_fp16.get(),
           block_B.size()
@@ -213,7 +214,7 @@ struct ExampleRunner {
           M * N,
           M * N 
       );
-      syclcompat::wait();
+      compat::wait();
 
       bool passed = cutlass::reference::device::BlockCompareEqual(
           block_ref_D.get(), block_D.get(), block_D.size());
@@ -275,7 +276,7 @@ struct ExampleRunner {
     // Run the GEMM
     CUTLASS_CHECK(gemm_op.run());
 
-    syclcompat::wait();
+    compat::wait();
 
     // Verify that the result is correct
     bool passed = verify(problem_size, options.alpha, options.beta);
@@ -289,7 +290,7 @@ struct ExampleRunner {
       for (int i = 0; i < options.iterations; ++i) {
         gemm_op.run();
       }
-      syclcompat::wait();
+      compat::wait();
 
       float cute_time = timer.seconds() / options.iterations;
       double tflops = (2.0 * options.m * options.n * options.k * options.l) * 1e-12;
