@@ -25,9 +25,6 @@ concurrency:
 jobs:
   run-tests:
     name: Run Python Interface tests on Intel PVC
-    strategy:
-      matrix:
-        compiler: [ RELEASE ]
     runs-on: pvc
     timeout-minutes: 60
 
@@ -47,7 +44,7 @@ jobs:
         id: install_dpcpp
         uses: ./.github/actions/install-dpcpp
         with:
-          DPCPP_RELEASE: ${{ matrix.compiler }}
+          DPCPP_RELEASE: RELEASE
           #DPCPP_VERSION: ${{ inputs.DPCPP_VERSION }}
           DPCPP_PATH: ~/dpcpp
       - name: Setup virtual environment
