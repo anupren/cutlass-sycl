@@ -8,10 +8,6 @@ on:
   merge_group:
     branches: [ "main" ]
   workflow_dispatch:
-    inputs:
-      DPCPP_VERSION:
-        description: "DPCPP version to use"
-        type: string
 
 permissions: {}
 
@@ -80,3 +76,28 @@ jobs:
           export SYCL_UR_TRACE=2
           export ONEAPI_DEVICE_SELECTOR=level_zero:gpu
           python test/python/cutlass/gemm/run_all_tests.py
+
+      - name: Cleanup DPC++
+        if: always()
+        shell: bash
+        run: |
+          echo "Cleaning up DPC++ installation..."
+          # Remove DPCPP directory if it exists
+          DPCPP_PATH="${{ inputs.DPCPP_PATH || '~/dpcpp' }}"
+          DPCPP_PATH=$(eval echo $DPCPP_PATH)  # Expand ~ to home directory
+          if [ -d "$DPCPP_PATH" ]; then
+            echo "Removing DPCPP directory: $DPCPP_PATH"
+            sudo rm -rf "$DPCPP_PATH"
+          fi
+          # For RELEASE installs, remove OneAPI packages
+          if [[ "${{ matrix.compiler }}" == "RELEASE" ]]; then
+            echo "Removing OneAPI packages..."
+            sudo apt remove -y intel-oneapi-runtime-libs intel-oneapi-compiler-dpcpp-cpp || true
+            sudo rm -f /etc/apt/sources.list.d/oneAPI.list
+            sudo rm -f /usr/share/keyrings/oneapi-archive-keyring.gpg
+          fi
+          # Clean up environment files
+          rm -f setvars.sh
+          # Clean up build artifacts
+          rm -rf build/ || true
+          echo "DPC++ cleanup completed"
