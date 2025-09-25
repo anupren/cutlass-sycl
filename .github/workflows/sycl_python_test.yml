@@ -25,9 +25,9 @@ concurrency:
 jobs:
   run-tests:
     name: Run Python Interface tests on Intel PVC
-    # strategy:
-    #   matrix:
-    #     compiler: [ NIGHTLY, RELEASE ]
+    strategy:
+      matrix:
+        compiler: [ RELEASE ]
     runs-on: pvc
     timeout-minutes: 60
 
@@ -47,8 +47,8 @@ jobs:
         id: install_dpcpp
         uses: ./.github/actions/install-dpcpp
         with:
-          # DPCPP_RELEASE: ${{ matrix.compiler }}
-          DPCPP_VERSION: ${{ inputs.DPCPP_VERSION }}
+          DPCPP_RELEASE: ${{ matrix.compiler }}
+          #DPCPP_VERSION: ${{ inputs.DPCPP_VERSION }}
           DPCPP_PATH: ~/dpcpp
       - name: Setup virtual environment
         shell: bash
@@ -65,7 +65,7 @@ jobs:
         uses: ./.github/actions/install-dpctl
         with:
           DPCTL_URL: https://github.com/IntelPython/dpctl.git
-          DPCTL_BRANCH: 0.20.2
+          DPCTL_BRANCH: master
           DPCTL_PATH: ~/dpctl
           VENV_PATH: ~/.venv
       - name: Install Torch XPU
