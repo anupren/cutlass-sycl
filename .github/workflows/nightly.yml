@@ -116,12 +116,12 @@ jobs:
           ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm.in > bmg_gemm_main.log 2>&1
           ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm_splitk.in > bmg_gemm_splitk_main.log 2>&1
           ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm_mixed_dtype.in > bmg_gemm_mixed_dtype_main.log 2>&1
-          
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_linear.in > bmg_gemm_linear_main.log 2>&1
           elif [ "${{ matrix.runner }}" == "pvc" ]; then
-          ./benchmarks/flash_attention/flash_attention_prefill/cutlass_benchmarks_flash_attention_prefill_xe --config_file=../benchmarks/device/pvc/input_files/input_flash_attention_prefill.in > pvc_attn_prefill_nokvcache_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/pvc/input_files/input_gemm.in > pvc_gemm_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/pvc/input_files/input_linear.in > pvc_gemm_linear_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/pvc/input_files/input_pytorch_2.in > pvc_gemm_pytorch2_main.log 2>&1
+          ./benchmarks/flash_attention/flash_attention_prefill/cutlass_benchmarks_flash_attention_prefill_xe --config_file=./benchmarks/device/pvc/input_files/input_flash_attention_prefill.in > pvc_attn_prefill_nokvcache_main.log 2>&1
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_gemm.in > pvc_gemm_main.log 2>&1
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_linear.in > pvc_gemm_linear_main.log 2>&1
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_pytorch_2.in > pvc_gemm_pytorch2_main.log 2>&1
           fi
           
       - name: Cleanup DPC++
