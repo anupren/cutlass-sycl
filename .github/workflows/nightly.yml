@@ -109,19 +109,19 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.runner }}" == "bmg" ]; then
-          ./benchmarks/flash_attention/flash_attention_prefill/cutlass_benchmarks_flash_attention_prefill_xe --config_file=../benchmarks/device/bmg/input_files/input_sglang_flash_attention_prefill_extend_nokvcache.in > bmg_attn_prefill_nokvcache_main.log 2>&1
-          ./benchmarks/flash_attention/flash_attention_prefill_cachedKV/cutlass_benchmarks_flash_attention_prefill_cachedkv_xe --config_file=../benchmarks/device/bmg/input_files/input_sglang_flash_attention_prefill_extend_kvcache.in > bmg_attn_prefill_kvcache_main.log 2>&1
-          ./benchmarks/flash_attention/flash_attention_decode/cutlass_benchmarks_flash_attention_decode_xe --config_file=../benchmarks/device/bmg/input_files/input_sglang_flash_attention_decode_kvcache.in > bmg_attn_decode_kvcache_main.log 2>&1
-          ./benchmarks/flash_attention/flash_attention_decode/cutlass_benchmarks_flash_attention_decode_xe --config_file=../benchmarks/device/bmg/input_files/input_sglang_flash_attention_decode_nokvcache.in > bmg_attn_decode_nokvcache_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm.in > bmg_gemm_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm_splitk.in > bmg_gemm_splitk_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm_mixed_dtype.in > bmg_gemm_mixed_dtype_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_linear.in > bmg_gemm_linear_main.log 2>&1
+          ./benchmarks/flash_attention/flash_attention_prefill/cutlass_benchmarks_flash_attention_prefill_xe --config_file=../benchmarks/device/bmg/input_files/input_sglang_flash_attention_prefill_extend_nokvcache.in  2>&1 | tee bmg_attn_prefill_nokvcache_main.log
+          ./benchmarks/flash_attention/flash_attention_prefill_cachedKV/cutlass_benchmarks_flash_attention_prefill_cachedkv_xe --config_file=../benchmarks/device/bmg/input_files/input_sglang_flash_attention_prefill_extend_kvcache.in  2>&1 | tee bmg_attn_prefill_kvcache_main.log
+          ./benchmarks/flash_attention/flash_attention_decode/cutlass_benchmarks_flash_attention_decode_xe --config_file=../benchmarks/device/bmg/input_files/input_sglang_flash_attention_decode_kvcache.in  2>&1 | tee bmg_attn_decode_kvcache_main.log
+          ./benchmarks/flash_attention/flash_attention_decode/cutlass_benchmarks_flash_attention_decode_xe --config_file=../benchmarks/device/bmg/input_files/input_sglang_flash_attention_decode_nokvcache.in  2>&1 | tee bmg_attn_decode_nokvcache_main.log
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm.in 2>&1 | tee bmg_gemm_main.log
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm_splitk.in  2>&1 | tee bmg_gemm_splitk_main.log 
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_gemm_mixed_dtype.in  2>&1 | tee bmg_gemm_mixed_dtype_main.log 
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=../benchmarks/device/bmg/input_files/input_sglang_linear.in 2>&1 | tee bmg_gemm_linear_main.log 
           elif [ "${{ matrix.runner }}" == "pvc" ]; then
-          ./benchmarks/flash_attention/flash_attention_prefill/cutlass_benchmarks_flash_attention_prefill_xe --config_file=./benchmarks/device/pvc/input_files/input_flash_attention_prefill.in > pvc_attn_prefill_nokvcache_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_gemm.in > pvc_gemm_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_linear.in > pvc_gemm_linear_main.log 2>&1
-          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_pytorch_2.in > pvc_gemm_pytorch2_main.log 2>&1
+          ./benchmarks/flash_attention/flash_attention_prefill/cutlass_benchmarks_flash_attention_prefill_xe --config_file=./benchmarks/device/pvc/input_files/input_flash_attention_prefill.in  2>&1 | tee pvc_attn_prefill_nokvcache_main.log 
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_gemm.in 2>&1 | tee pvc_gemm_main.log 
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_linear.in 2>&1 | tee pvc_gemm_linear_main.log 
+          ./benchmarks/gemm/cutlass_benchmarks_gemm_sycl --config_file=./benchmarks/device/pvc/input_files/input_pytorch_2.in 2>&1 | tee pvc_gemm_pytorch2_main.log 
           fi
           
       - name: Cleanup DPC++
