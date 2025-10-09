@@ -15,6 +15,9 @@ on:
 
 permissions: read-all
 
+env:
+  no_proxy: "127.0.0.1,localhost,apt.repos.intel.com,mlpc.intel.com,*.intel.com"
+
 jobs:
   coverity:
     runs-on: BMG
@@ -69,9 +72,10 @@ jobs:
             -DCMAKE_CXX_FLAGS="-Werror" \
             -DCUTLASS_SYCL_RUNNING_CI=ON
 
-      - uses: vapier/coverity-scan-action@2068473c7bdf8c2fb984a6a40ae76ee7facd7a85 # v1.8.0
+      - uses: vapier/coverity-scan-action@v1
         with:
           email: ${{ secrets.COVERITY_SCAN_EMAIL }}
           token: ${{ secrets.COVERITY_SCAN_TOKEN }}
           command: cmake --build .
+          dry_run: true
           working-directory: ''
