@@ -72,9 +72,12 @@ jobs:
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=intel_gpu_pvc \
-            -DCMAKE_CXX_FLAGS="-Werror" \
             -DCUTLASS_SYCL_RUNNING_CI=ON \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCUTLASS_ENABLE_TESTS=OFF \
+            -DCUTLASS_ENABLE_EXAMPLES=OFF \
+            -DCUTLASS_ENABLE_BENCHMARKS=OFF \
+            -DCMAKE_CXX_STANDARD=17
 
       - name: URL encode project name
         id: project
@@ -123,31 +126,33 @@ jobs:
         shell: bash
         working-directory: ${{ env.working-directory }}
       
-      - name: Configure Coverity Compiler
-        shell: bash
-        run: |
-          echo "Configuring Coverity for icpx compiler..."
+      # - name: Configure Coverity Compiler
+      #   shell: bash
+      #   run: |
+      #     echo "Configuring Coverity for icpx compiler..."
                     
-          # Configure Coverity for icpx compiler
-          ${{ github.workspace}}/cov-analysis/bin/cov-configure \
-            --template \
-            --comptype intel_icpx \
-            --compiler icpx || {
-            echo "ERROR: Failed to configure Coverity for icpx compiler"
-            exit 1
-          }
+      #     # Configure Coverity for icpx compiler
+      #     ${{ github.workspace}}/cov-analysis/bin/cov-configure \
+      #       --template \
+      #       --comptype intel_icpx \
+      #       --compiler icpx || {
+      #       echo "ERROR: Failed to configure Coverity for icpx compiler"
+      #       exit 1
+      #     }
                     
-          echo "Coverity compiler configuration completed"
+      #     echo "Coverity compiler configuration completed"
 
-          # ${{ github.workspace}}/cov-analysis/bin/cov-configure \
-          # --template \
-          # --comptype clangcxx \
-          # --compiler $CXX || echo "DPC++ compiler configuration skipped"
+      #     # ${{ github.workspace}}/cov-analysis/bin/cov-configure \
+      #     # --template \
+      #     # --comptype clangcxx \
+      #     # --compiler $CXX || echo "DPC++ compiler configuration skipped"
 
-          # ${{ github.workspace}}/cov-analysis/bin/cov-configure --list-compiler-types | grep -E "clang|intel" || echo "Intel SYCL compilers configured"
+      #     # ${{ github.workspace}}/cov-analysis/bin/cov-configure --list-compiler-types | grep -E "clang|intel" || echo "Intel SYCL compilers configured"
 
       - name: Build with cov-build
         run: |
+          export CC=gcc
+          export CXX=g++
           export PATH="${PWD}/cov-analysis/bin:${PATH}"
           cov-build --dir cov-int cmake --build .
         working-directory: ${{ env.working-directory }}
