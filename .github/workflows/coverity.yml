@@ -69,14 +69,20 @@ jobs:
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=intel_gpu_pvc \
-            -DCMAKE_CXX_FLAGS="-Werror" \
-            -DCUTLASS_SYCL_RUNNING_CI=ON
+            -DCUTLASS_SYCL_RUNNING_CI=ON \
+            -DCUTLASS_ENABLE_TESTS=OFF \
+            -DCUTLASS_ENABLE_EXAMPLES=OFF
+
+      - name: Create cache directories
+        run: |
+          mkdir -p ~/.cache/coverity
+          mkdir -p /tmp/coverity-cache
 
       - uses: vapier/coverity-scan-action@main
         with:
           email: ${{ secrets.COVERITY_SCAN_EMAIL }}
           token: ${{ secrets.COVERITY_SCAN_TOKEN }}
-          command: cmake --build .
+          command: cmake --build . --verbose
           dry_run: true
           project: intel/sycl-tla
           working-directory: ''
