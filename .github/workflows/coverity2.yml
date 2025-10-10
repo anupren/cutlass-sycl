@@ -20,7 +20,7 @@ jobs:
       - name: Configure image
         run: >
           apt update && apt install -y cmake curl git jq libstdc++-12-dev \
-            ninja-build python3 wget
+            ninja-build python3 wget file
       - name: Download DPCPP
         shell: bash
         run: |
