@@ -73,7 +73,8 @@ jobs:
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=intel_gpu_pvc \
             -DCMAKE_CXX_FLAGS="-Werror" \
-            -DCUTLASS_SYCL_RUNNING_CI=ON
+            -DCUTLASS_SYCL_RUNNING_CI=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: URL encode project name
         id: project
@@ -138,12 +139,12 @@ jobs:
                     
           echo "Coverity compiler configuration completed"
 
-          ${{ github.workspace}}/cov-analysis/bin/cov-configure \
-          --template \
-          --comptype clangcxx \
-          --compiler $CXX || echo "DPC++ compiler configuration skipped"
+          # ${{ github.workspace}}/cov-analysis/bin/cov-configure \
+          # --template \
+          # --comptype clangcxx \
+          # --compiler $CXX || echo "DPC++ compiler configuration skipped"
 
-          ${{ github.workspace}}/cov-analysis/bin/cov-configure --list-compiler-types | grep -E "clang|intel" || echo "Intel SYCL compilers configured"
+          # ${{ github.workspace}}/cov-analysis/bin/cov-configure --list-compiler-types | grep -E "clang|intel" || echo "Intel SYCL compilers configured"
 
       - name: Build with cov-build
         run: |
