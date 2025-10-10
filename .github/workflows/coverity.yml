@@ -69,10 +69,8 @@ jobs:
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=intel_gpu_pvc \
-            -DCUTLASS_SYCL_RUNNING_CI=ON \
-            -DCUTLASS_ENABLE_TESTS=OFF \
-            -DCUTLASS_ENABLE_EXAMPLES=OFF
-
+            -DCUTLASS_SYCL_RUNNING_CI=ON 
+            
       - name: Create cache directories
         run: |
           mkdir -p ~/.cache/coverity
