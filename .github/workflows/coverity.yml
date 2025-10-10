@@ -16,7 +16,7 @@ permissions: read-all
 
 env:
   no_proxy: "127.0.0.1,localhost,apt.repos.intel.com,mlpc.intel.com,*.intel.com"
-  project: ${{ github.repository }}
+  project: intel/sycl-tla
   build_language: cxx
   working-directory: ${{ github.workspace }}
   build_platform: linux64 
