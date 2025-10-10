@@ -142,15 +142,22 @@ jobs:
             echo "ERROR: Failed to configure Coverity for icpx compiler"
             exit 1
           }
+             ${{ github.workspace}}/cov-analysis/bin/cov-configure \
+            --template \
+            --comptype intel_dpcpp:linux \
+            --compiler dpcpp || {
+            echo "ERROR: Failed to configure Coverity for icpx compiler"
+            exit 1
+          }
+             ${{ github.workspace}}/cov-analysis/bin/cov-configure \
+            --template \
+            --comptype intel_icx:linux \
+            --compiler icx || {
+            echo "ERROR: Failed to configure Coverity for icpx compiler"
+            exit 1
+          }
                     
           echo "Coverity compiler configuration completed"
-
-          # ${{ github.workspace}}/cov-analysis/bin/cov-configure \
-          # --template \
-          # --comptype clangcxx \
-          # --compiler $CXX || echo "DPC++ compiler configuration skipped"
-
-          # ${{ github.workspace}}/cov-analysis/bin/cov-configure --list-compiler-types | grep -E "clang|intel" || echo "Intel SYCL compilers configured"
 
       - name: Build with cov-build
         run: |
