@@ -126,10 +126,7 @@ jobs:
         shell: bash
         run: |
           echo "Configuring Coverity for icpx compiler..."
-          
-          # Source DPC++ environment to get icpx
-          . setvars.sh
-          
+                    
           # Configure Coverity for icpx compiler
           ${{ github.workspace}}/cov-analysis/bin/cov-configure \
             --template \
