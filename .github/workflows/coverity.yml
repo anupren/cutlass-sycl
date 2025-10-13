@@ -79,7 +79,8 @@ jobs:
             -DCMAKE_CXX_FLAGS="-Werror" \
             -DCUTLASS_SYCL_PROFILING_ENABLED=OFF \
             -DCUTLASS_ENABLE_BENCHMARKS=ON \
-            -DCMAKE_BUILD_TYPE=Release 
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=icpx
             
       - name: URL encode project name
         id: project
