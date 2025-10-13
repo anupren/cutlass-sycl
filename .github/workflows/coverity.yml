@@ -23,7 +23,7 @@ env:
 
 jobs:
   coverity:
-    runs-on: PVC
+    runs-on: bmg
     timeout-minutes: 120
 
     steps:
@@ -75,12 +75,11 @@ jobs:
         run: |
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
-            -DDPCPP_SYCL_TARGET=intel_gpu_pvc \
+            -DDPCPP_SYCL_TARGET=intel_gpu_bmg_g21 \
             -DCMAKE_CXX_FLAGS="-Werror" \
             -DCUTLASS_SYCL_PROFILING_ENABLED=OFF \
             -DCUTLASS_ENABLE_BENCHMARKS=ON \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=icpx
             
       - name: URL encode project name
         id: project
