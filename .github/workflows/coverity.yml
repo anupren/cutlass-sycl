@@ -63,7 +63,7 @@ jobs:
           export IGC_ExtraOCLOptions="-cl-intel-256-GRF-per-thread"
           export CC=icx
           export CXX=icpx
-          export CUTLASS_SYCL_PROFILING_ENABLED=ON
+          # export CUTLASS_SYCL_PROFILING_ENABLED=ON
 
           env >> $GITHUB_ENV
           which $CXX
@@ -76,8 +76,11 @@ jobs:
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=intel_gpu_pvc \
-            -DCMAKE_CXX_FLAGS="-Werror" 
-
+            -DCMAKE_CXX_FLAGS="-Werror" \
+            -DCUTLASS_SYCL_PROFILING_ENABLED=OFF \
+            -DCUTLASS_ENABLE_BENCHMARKS=ON \
+            -DCMAKE_BUILD_TYPE=Release 
+            
       - name: URL encode project name
         id: project
         run: echo "project=${{ env.project }}" | sed -e 's:/:%2F:g' -e 's/ /%20/g' >> $GITHUB_OUTPUT
