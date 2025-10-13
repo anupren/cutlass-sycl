@@ -76,11 +76,7 @@ jobs:
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=intel_gpu_pvc \
-            -DCMAKE_CXX_FLAGS="-Werror" \
-            -DCUTLASS_SYCL_RUNNING_CI=ON \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DCUTLASS_SYCL_PROFILING_ENABLED=ON 
-
+            -DCMAKE_CXX_FLAGS="-Werror" 
 
       - name: URL encode project name
         id: project
@@ -133,34 +129,12 @@ jobs:
         shell: bash
         run: |
           echo "Configuring Coverity for icpx compiler..."
-                    
-          # Configure Coverity for specific Intel OneAPI compiler path
-          ${{ github.workspace}}/cov-analysis/bin/cov-configure \
-            --compiler /opt/intel/oneapi/compiler/2025.2/bin/compiler/clang \
-            --comptype gcc || {
-            echo "ERROR: Failed to configure Coverity for Intel OneAPI clang compiler"
-            exit 1
-          }
           
           # Configure Coverity for icpx compiler
           ${{ github.workspace}}/cov-analysis/bin/cov-configure \
             --template \
             --comptype intel_icpx:linux \
             --compiler icpx || {
-            echo "ERROR: Failed to configure Coverity for icpx compiler"
-            exit 1
-          }
-             ${{ github.workspace}}/cov-analysis/bin/cov-configure \
-            --template \
-            --comptype intel_dpcpp:linux \
-            --compiler dpcpp || {
-            echo "ERROR: Failed to configure Coverity for icpx compiler"
-            exit 1
-          }
-             ${{ github.workspace}}/cov-analysis/bin/cov-configure \
-            --template \
-            --comptype intel_icx:linux \
-            --compiler icx || {
             echo "ERROR: Failed to configure Coverity for icpx compiler"
             exit 1
           }
