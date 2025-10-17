@@ -46,6 +46,8 @@ jobs:
             gpu: PVC
             intel_graphics: ROLLING
             sycl_target: intel_gpu_pvc
+            igc_version_major: 2
+            igc_version_minor: 18
             runner: pvc
           # - compiler: NIGHTLY
           #   gpu: PVC
@@ -102,7 +104,10 @@ jobs:
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=${{ matrix.sycl_target }} \
             -DCUTLASS_SYCL_RUNNING_CI=ON \
+            -DIGC_VERSION_MAJOR=${{ matrix.igc_version_major }} \
+            -DIGC_VERSION_MINOR=${{ matrix.igc_version_minor }} \
             -DCUTLASS_ENABLE_BENCHMARKS=ON \
+            -DCMAKE_CXX_FLAGS="-Werror" \
             -DCUTLASS_ENABLE_TESTS=ON 
           cmake --build . 
       - name: Benchmarks
@@ -151,3 +156,11 @@ jobs:
           unset CC CXX CPLUS_INCLUDE_PATH C_INCLUDE_PATH LD_LIBRARY_PATH
           unset IGC_ExtraOCLOptions SYCL_PROGRAM_COMPILE_OPTIONS ONEAPI_DEVICE_SELECTOR IGC_VectorAliasBBThreshold
           echo "DPC++ cleanup completed"
+
+      - name: Upload Benchmark Logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.runner }}-benchmark-logs-${{ matrix.compiler }}-intel-graphics-${{ matrix.intel_graphics }}
+          path: |
+            *.log
