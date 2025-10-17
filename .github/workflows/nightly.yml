@@ -159,7 +159,7 @@ jobs:
 
       - name: Upload Benchmark Logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.runner }}-benchmark-logs-${{ matrix.compiler }}-intel-graphics-${{ matrix.intel_graphics }}
           path: |
