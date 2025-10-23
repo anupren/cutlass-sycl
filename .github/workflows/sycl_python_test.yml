@@ -8,6 +8,12 @@ on:
   merge_group:
     branches: [ "main" ]
   workflow_dispatch:
+    upload_wheel:
+      description: 'Upload Wheel'
+      type: boolean
+      required: false
+      default: false
+ 
 
 permissions: {}
 env:
@@ -76,11 +82,19 @@ jobs:
         shell: bash
         run: |
           source ~/.venv/bin/activate
-          pip install -e .
+          pythom -m build
+          pip install dist/sycl_tla*.whl
           export CUTLASS_USE_SYCL=1
-          export SYCL_UR_TRACE=2
+          #export SYCL_UR_TRACE=2
           export ONEAPI_DEVICE_SELECTOR=level_zero:gpu
           python test/python/cutlass/gemm/gemm_bf16_pvc.py
+      
+      - name: Upload Wheel
+        if: ${{ inputs.upload_wheel }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: python wheel
+          path: dist/sycl_tla*.whl
 
       - name: Cleanup DPC++
         if: always()
