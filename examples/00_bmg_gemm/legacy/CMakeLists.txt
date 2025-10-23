@@ -1,4 +1,4 @@
-# Copyright (c) 2024 - 2024 Codeplay Software Ltd. All rights reserved.
+# Copyright (c) 2024 - 2025 Codeplay Software Ltd. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,30 +26,16 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-if(NOT DEFINED IGC_VERSION_MAJOR)
-  set(IGC_VERSION_MAJOR 2)
-endif()
-if(NOT DEFINED IGC_VERSION_MINOR)
-  set(IGC_VERSION_MINOR 18)
-endif()
+set(TEST_BATCHES --l=2)
+set(TEST_LARGE "--l=513 --m=8 --n=16384 --k=512") # B matrix capacity > uint32_max
+set(TEST_SMALL_SHAPE --m=4 --n=8 --k=8 --l=2)
 
-add_compile_definitions(
-    IGC_VERSION_MAJOR=${IGC_VERSION_MAJOR}
-    IGC_VERSION_MINOR=${IGC_VERSION_MINOR}
-)
 
-if(SYCL_INTEL_TARGET)
-cutlass_test_unit_add_executable(
-  cutlass_test_unit_cute_intel_xe
-  copy_1d.cpp
-  copy_subgroup_block.cpp
-  copy_block.cpp
-  copy_scatter.cpp
-  mma.cpp
-  tiled_mma.cpp
+cutlass_example_add_executable(
+  00_bmg_gemm_legacy
+  00_bmg_gemm.cpp
+  TEST_COMMAND_OPTIONS
+  TEST_BATCHES
+  TEST_LARGE
+  TEST_SMALL_SHAPE
 )
-else()
-cutlass_test_unit_add_executable(
-  cutlass_test_unit_cute_intel_xe
-)
-endif()
