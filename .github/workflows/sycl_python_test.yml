@@ -92,7 +92,7 @@ jobs:
           python test/python/cutlass/gemm/gemm_bf16_pvc.py
       
       - name: Upload Wheel
-        if: ${{ inputs.upload_wheel }}
+        if: ${{ inputs.upload_wheel && always() }}
         uses: actions/upload-artifact@v4
         with:
           name: python wheel
