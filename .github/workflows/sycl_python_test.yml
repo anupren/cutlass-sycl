@@ -83,6 +83,7 @@ jobs:
         shell: bash
         run: |
           source ~/.venv/bin/activate
+          pip install build setuptools networkx numpy pydot scipy treelib
           python -m build
           pip install dist/sycl_tla*.whl
           export CUTLASS_USE_SYCL=1
