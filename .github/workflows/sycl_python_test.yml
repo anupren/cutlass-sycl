@@ -8,12 +8,13 @@ on:
   merge_group:
     branches: [ "main" ]
   workflow_dispatch:
-    upload_wheel:
-      description: 'Upload Wheel'
-      type: boolean
-      required: false
-      default: false
- 
+    inputs:
+      upload_wheel:
+        description: 'Upload Wheel'
+        type: boolean
+        required: false
+        default: true
+
 
 permissions: {}
 env:
