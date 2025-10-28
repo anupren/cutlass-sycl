@@ -37,8 +37,6 @@ Low-level functionality tests for GEMM with BF16 operands on PVC
 from functools import partial
 import logging
 import unittest
-import os
-os.environ["CUTLASS_USE_SYCL"] = "1"
 import cutlass_cppgen
 from cutlass_cppgen.backend.utils.device import device_cc
 
