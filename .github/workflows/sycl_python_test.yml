@@ -32,11 +32,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Intel graphics drivers
-        uses: ./.github/actions/install-intel-graphics
-        with:
-          GPU: 'PVC'
-          IGC: 'ROLLING'
+      # - name: Install Intel graphics drivers
+      #   uses: ./.github/actions/install-intel-graphics
+      #   with:
+      #     GPU: 'PVC'
+      #     IGC: 'ROLLING'
 
       - name: Install DPC++
         id: install_dpcpp
