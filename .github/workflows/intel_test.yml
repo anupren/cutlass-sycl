@@ -106,8 +106,8 @@ jobs:
           cmake -G Ninja  \
             -DCUTLASS_ENABLE_SYCL=ON \
             -DDPCPP_SYCL_TARGET=${{ matrix.sycl_target }} \
-            -DIGC_VERSION_MAJOR=${{ igc_version_major }} \
-            -DIGC_VERSION_MINOR=${{ igc_version_minor }} \
+            -DIGC_VERSION_MAJOR=$igc_version_major \
+            -DIGC_VERSION_MINOR=$igc_version_minor \
             -DCMAKE_CXX_FLAGS="-Werror" \
             -DCUTLASS_SYCL_RUNNING_CI=ON
           cmake --build . 
