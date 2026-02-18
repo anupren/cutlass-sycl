@@ -1,5 +1,6 @@
 /***************************************************************************************************
  * Copyright (c) 2024 - 2025 Codeplay Software Ltd. All rights reserved.
+ * Copyright (C) 2025 Intel Corporation, All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,6 +38,7 @@
 #include <sycl/sycl.hpp>
 #include "cutlass/cutlass.h"
 #include "cutlass/epilogue/dispatch_policy.hpp"
+#include "cutlass/epilogue/collective/collective_builder.hpp"
 #include "cutlass/epilogue/collective/collective_epilogue.hpp"
 #include "cutlass/epilogue/collective/detail.hpp"
 #include "cutlass/epilogue/fusion/callbacks.hpp"
@@ -55,128 +57,94 @@ namespace collective {
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <
-  class TiledMMA_,
-  class CtaTileMNK_,
+  class WGTileMNK_,
+  class EpilogueTile_,
   class ElementC_,
   class StrideC_,
   class ElementD_,
   class StrideD_,
   class FusionCallbacks_,
   class CopyOpG2R_,
-  class SmemLayoutAtomC_,
-  class CopyOpS2R_,
-  class CopyOpR2G_,
-  class SmemLayoutAtomD_,
-  class CopyOpR2S_
+  class CopyOpR2G_
 >
 class CollectiveEpilogue<
     IntelXeGenericGroup,
-    TiledMMA_,
-    CtaTileMNK_,
+    WGTileMNK_,
+    EpilogueTile_,
     ElementC_,
     StrideC_,
     ElementD_,
     StrideD_,
     FusionCallbacks_,
     CopyOpG2R_,
-    SmemLayoutAtomC_,
-    CopyOpS2R_,
-    CopyOpR2G_,
-    SmemLayoutAtomD_,
-    CopyOpR2S_
-> {
+    CopyOpR2G_
+> : public CollectiveEpilogue<
+        IntelXeGeneric,
+        WGTileMNK_,
+        EpilogueTile_,
+        ElementC_,
+        cute::remove_pointer_t<StrideC_>,
+        ElementD_,
+        cute::remove_pointer_t<StrideD_>,
+        FusionCallbacks_,
+        CopyOpG2R_,
+        CopyOpR2G_>
+{
 public:
   //
   // Type Aliases
   //
+  using Base = CollectiveEpilogue<
+      IntelXeGeneric,
+      WGTileMNK_,
+      EpilogueTile_,
+      ElementC_,
+      cute::remove_pointer_t<StrideC_>,
+      ElementD_,
+      cute::remove_pointer_t<StrideD_>,
+      FusionCallbacks_,
+      CopyOpG2R_,
+      CopyOpR2G_>;
+  using BaseArguments = typename Base::Arguments;
+  using BaseParams = typename Base::Params;
+
   using DispatchPolicy = IntelXeXMX16Group;
-  using TiledMMA = TiledMMA_;
-  using CtaTileMNK = CtaTileMNK_;
-  using FusionCallbacks = FusionCallbacks_;
+
+  using WGTileMNK = typename Base::WGTileMNK;
   using ElementC = ElementC_;
   using StrideC = StrideC_;
-  using InternalStrideC = cute::remove_pointer_t<StrideC>;
+  using InternalStrideC = typename Base::StrideC;
   using ElementD = ElementD_;
   using StrideD = StrideD_;
-  using InternalStrideD = cute::remove_pointer_t<StrideD>;
-  using CopyOpG2R = CopyOpG2R_;
-  using SmemLayoutAtomC = SmemLayoutAtomC_;
-  using CopyOpS2R = CopyOpS2R_;
-  using CopyOpR2G = CopyOpR2G_;
-  using SmemLayoutAtomD = SmemLayoutAtomD_;
-  using CopyOpR2S = CopyOpR2S_;
+  using InternalStrideD = typename Base::StrideD;
 
-  using WGTileMNK = decltype(TiledMMA{}.tile_mnk());
-  using MMATile = decltype(take<0,2>(typename TiledMMA::AtomShape_MNK{}));
+  using FusionCallbacks = FusionCallbacks_;
+  using CopyOpG2R = typename Base::CopyOpG2R;
+  using CopyOpR2G = typename Base::CopyOpR2G;
+  using NonVoidElementC = typename Base::NonVoidElementC;
+  using ThreadEpilogueOp = typename Base::ThreadEpilogueOp;
+  using ElementCompute = typename Base::ElementCompute;
+  using ElementOutput = typename Base::ElementOutput;
+  using GmemTiledCopyC = typename Base::GmemTiledCopyC;
+  using GmemTiledCopyD = typename Base::GmemTiledCopyD;
+  using SharedStorage = typename Base::SharedStorage;
+  using TensorStorage = typename Base::TensorStorage;
 
-  static auto default_epi_tile_helper() {
-    constexpr int R_preferred = 8;
-    constexpr int C_preferred = 512 / cute::min(sizeof_bits_v<ElementC>, sizeof_bits_v<ElementD>);    // 1 cache line
-    constexpr int R = cute::gcd(R_preferred, get<0>(MMATile{}));
-    constexpr int C = cute::gcd(C_preferred, get<1>(MMATile{}));
-    return Shape<Int<R>, Int<C>>{};
-  }
+  static constexpr int SubgroupSize = Base::SubgroupSize;
 
-  using DefaultEpilogueTile = decltype(default_epi_tile_helper());
-  using EpilogueTile = DefaultEpilogueTile;
+  using TensorC = decltype(make_tensor(make_gmem_ptr(static_cast<NonVoidElementC const*>(nullptr)),
+                                       Layout<Shape<int,int,int>, InternalStrideC>{}));
 
-  using ThreadEpilogueOp = typename fusion::FusionCallbacksTraits<FusionCallbacks>::Operation;
-  using ElementCompute = typename ThreadEpilogueOp::ElementCompute;
-  using ElementOutput = ElementD;
+  using TensorD = decltype(make_tensor(make_gmem_ptr(static_cast<ElementD*>(nullptr)),
+                                       Layout<Shape<int,int,int>, InternalStrideD>{}));
 
-  static constexpr int CopyBitsC = cute::min(sizeof(ElementC) * 8, 64);
-  static constexpr int CopyBitsD = cute::min(sizeof(ElementD) * 8, 64);
-  using DefaultCopyOpG2R =  XE_LOAD_2D<CopyBitsC, cute::gcd(8, get<0>(EpilogueTile{})), cute::gcd(512 / CopyBitsC, get<1>(EpilogueTile{}))>;
-  using DefaultCopyOpR2G = XE_STORE_2D<CopyBitsD, cute::gcd(8, get<0>(EpilogueTile{})), cute::gcd(512 / CopyBitsD, get<1>(EpilogueTile{}))>;
-
-  using GmemTiledCopyC = replace_void_t<CopyOpG2R, DefaultCopyOpG2R>;
-  using GmemTiledCopyD = replace_void_t<CopyOpR2G, DefaultCopyOpR2G>;
-
-  using ElementAccumulator = ElementCompute;
-  using ElementSource = typename FusionCallbacks::ElementSource;
-  using ElementScalar = typename FusionCallbacks::ElementScalar;
-  static constexpr FloatRoundStyle RoundStyle = FloatRoundStyle::round_to_nearest;
-
-  static_assert(cute::is_same_v<typename FusionCallbacks::Operation, 
-                                fusion::LinearCombination<ElementAccumulator, ElementCompute, ElementSource, ElementScalar, RoundStyle>>,
-  "Only Linear Combination Epilogue is supported for Grouped GEMM at the moment.");
-
-  static constexpr int SubgroupSize = DispatchPolicy::SubgroupSize;
-
-  static_assert(cute::rank(CtaTileMNK{}) == 3, "CtaTileMNK must be rank-3: [CTA_M, CTA_N, CTA_K]");
-  static_assert(cute::rank(InternalStrideC{}) == 3, "StrideC must be rank-3: [M, N, L]");
-  static_assert(cute::rank(InternalStrideD{}) == 3, "StrideD must be rank-3: [M, N, L]");
-
-  static_assert(std::is_same_v<CopyOpS2R, void>, "Copy operation to shared memory is not supported");
-  static_assert(std::is_same_v<CopyOpR2S, void>, "Copy operation to shared memory is not supported");
-  static_assert(std::is_same_v<SmemLayoutAtomC, void>, "Copy operation to shared memory is not supported");
-  static_assert(std::is_same_v<SmemLayoutAtomD, void>, "Copy operation to shared memory is not supported");
+  using EpilogueTensors = cute::tuple<TensorC, TensorD>;
 
 private:
   constexpr static bool is_source_supported      = not is_void_v<ElementC>;
   constexpr static bool is_destination_supported = not is_void_v<ElementD>;
 
 public:
-
-  using EmptyType = cute::tuple<>;
-  using SmemCStorage = EmptyType;
-  using SmemDStorage = EmptyType;
-
-  struct TensorStorageImpl: cute::tuple<SmemCStorage, SmemDStorage> {
-    using FusionStorage = typename FusionCallbacks::SharedStorage;
-    FusionStorage thread;
-  };
-
-  struct SharedStorage {
-    using TensorStorage = TensorStorageImpl;
-
-    TensorStorage tensors;
-  };
-  using TensorStorage = typename SharedStorage::TensorStorage;
-
-  using TensorC = decltype(make_tensor(make_gmem_ptr(static_cast<ElementC const*>(nullptr)), make_shape(0,0,0), InternalStrideC{}));   //(m, n)
-  using TensorD = decltype(make_tensor(make_gmem_ptr(static_cast<ElementD*>(nullptr)), make_shape(0,0,0), InternalStrideD{}));         //(m, n)
-  using EpilogueTensors = cute::tuple<TensorC, TensorD>;
 
   // Host side epilogue arguments
   struct Arguments {
@@ -186,14 +154,8 @@ public:
     ElementD** ptr_D;
     StrideD dD;
   };
-  // Device side epilogue params
-  struct Params {
-    typename FusionCallbacks::Params thread{};
-    ElementC const** ptr_C;
-    StrideC dC;
-    ElementD** ptr_D;
-    StrideD dD;
-  };
+
+  using Params = Arguments;
 
   //
   // Methods
@@ -205,17 +167,8 @@ public:
       ProblemShape const& problem_shape,
       Arguments const& args,
       [[maybe_unused]] void* workspace) {
-    // Optionally append 1s until problem shape is rank-4 in case its is only rank-3 (MNK)
-    auto problem_shape_MNL = repeat_like(typename ProblemShape::UnderlyingProblemShape{}, int32_t(1));
-    auto [M, N, L] = problem_shape_MNL;
-
-    return {
-      FusionCallbacks::to_underlying_arguments(problem_shape, args.thread, workspace),
-      args.ptr_C,
-      args.dC,
-      args.ptr_D,
-      args.dD
-    };
+    (void) workspace;
+    return args;
   }
 
   template <class ProblemShape>
@@ -226,7 +179,7 @@ public:
 
   template <class ProblemShape>
   static cutlass::Status
-  initialize_workspace(ProblemShape const& problem_shape, Arguments const& args, void* workspace, cudaStream_t stream, 
+  initialize_workspace(ProblemShape const& problem_shape, Arguments const& args, void* workspace, cudaStream_t stream,
     CudaHostAdapter* cuda_adapter = nullptr) {
     return Status::kSuccess;
   }
@@ -278,199 +231,12 @@ public:
     return implementable && fusion_implementable;
   }
 
-  CUTLASS_HOST_DEVICE
-  CollectiveEpilogue(Params const& params_, TensorStorage const& shared_storage_)
-      : params(params_), fusion_callbacks(params_.thread, shared_storage_.thread) {}
-
-  CUTLASS_DEVICE
-  bool
-  is_producer_load_needed() const {
-    return fusion_callbacks.is_producer_load_needed();
+  CUTLASS_DEVICE static constexpr BaseArguments
+  to_base_arguments(Arguments const &args, int idx) {
+    return BaseArguments{ args.thread, args.ptr_C[idx], args.dC[idx],
+                          args.ptr_D[idx], args.dD[idx]};
   }
 
-  template<
-    class ProblemShapeMNKL,
-    class TileShapeMNK,
-    class TileCoordMNKL,
-    class Accumulator,
-    class LoadStoreTensor
-  >
-  CUTLASS_DEVICE void
-  operator() (
-      ProblemShapeMNKL problem_shape_mnkl,
-      TileShapeMNK,     /* compatibility with legacy epilogues */
-      TileCoordMNKL tile_coord_mnkl,
-      Accumulator accumulators, 
-      TiledMMA,         /* compatibility with legacy epilogues */
-      int thread_idx,
-      LoadStoreTensor const& load_store_tensors) {
-    
-    using namespace cute;
-
-    bool is_C_load_needed = is_source_supported && fusion_callbacks.is_C_load_needed();
-
-    auto MN = take<0,2>(problem_shape_mnkl);
-    auto cCD = make_identity_tensor(MN);                                                // (m,n)
-    auto gCD = local_tile(cCD, take<0,2>(WGTileMNK{}), take<0,2>(tile_coord_mnkl));     // (m_in_wg_tile, n_in_wg_tile)
-
-    auto thr_mma = TiledMMA{}.get_slice(thread_idx);
-    auto tCDgCD = thr_mma.partition_C(gCD);                                             // (mma_v,mma_m,mma_n) -> coord
-
-    // Tile accumulator into epilogue tiles.
-    auto mma_per_epi = shape_div(EpilogueTile{}, MMATile{});
-    auto tiled_acc_layout = group<0,3>(prepend(flat_divide(remove<0>(accumulators.layout()), mma_per_epi),
-                                               get<0>(accumulators.layout())));
-    auto tiled_acc = make_tensor(accumulators.data(), tiled_acc_layout);                // ((mma_v,mma_m,mma_n),epi_m,epi_n)
-
-    // Tile subgroup's TV coord layout into epilogue tiles.
-    auto sg_v_coord = prepend(flat_divide(remove<0>(tCDgCD.layout()), mma_per_epi),
-                              get<0>(tCDgCD.layout()));                                 // (mma_v,mma_m,mma_n,epi_m,epi_n) -> coord
-
-    // Copy C/D one epilogue tile at a time. Prepare:
-    //   - subgroup-scope TiledCopy objects
-    //   - global coordinate tensors, partitioned into epilogue tiles
-    //   - copy fragments
-    //   - compute fragments (same layout as accumulator)
-    // Both copy and compute fragments are SubgroupTensors, holding coordinate mappings
-    //   within the epilogue tile.
-    auto copy_c = make_block_2d_copy(GmemTiledCopyC{}, get<0>(load_store_tensors)(_,_,0));
-    auto copy_d = make_block_2d_copy(GmemTiledCopyD{}, get<1>(load_store_tensors)(_,_,0));
-
-    int wi_idx = thread_idx % intel::sg_size;
-    auto thr_copy_c = copy_c.get_slice(wi_idx);
-    auto thr_copy_d = copy_d.get_slice(wi_idx);
-
-    // Partition global coordinate tensors into epilogue tiles, matching
-    //  the work-division from the TiledMMA.
-    auto gCD_epi_layout = append(append(make_identity_layout(EpilogueTile{}),
-                                        get<3>(sg_v_coord)), get<4>(sg_v_coord));
-    auto gCD_epi = make_tensor(tCDgCD.data(), gCD_epi_layout);                          // (m,n,epi_m,epi_n) -> coord
-
-    auto tCgC = thr_copy_c.partition_S(gCD_epi);                                        // (atom_v,atom_m,atom_n,epi_m,epi_n)
-    auto tDgD = thr_copy_d.partition_D(gCD_epi);                                        // (atom_v,atom_m,atom_n,epi_m,epi_n)
-
-    auto tCrC = thr_copy_c.partition_sg_fragment_D(gCD_epi(_,_,0,0));                   // (atom_v,atom_m,atom_n,epi_m,epi_n)
-    auto tDrD = thr_copy_d.partition_sg_fragment_S(gCD_epi(_,_,0,0));                   // (atom_v,atom_m,atom_n,epi_m,epi_n)
-
-    // Create C subgroup fragments for epilogue compute.
-    using AccTVLayout = decltype(thr_mma.partition_sg_fragment_C(gCD).tv_layout());
-    auto cd_compute_tv = make_layout(get<0>(AccTVLayout{}),
-                                     sg_v_coord(_,_,_,_0{},_0{}));
-
-    using NonVoidElementC = replace_void_t<ElementC, int>;
-
-    auto tCrC_compute_wi = make_fragment_like<NonVoidElementC>(tiled_acc(_,_0{},_0{}));
-    auto tCrC_compute = make_subgroup_tensor(tCrC_compute_wi, cd_compute_tv);           // (mma_v,mma_m,mma_n)
-
-    // Calculate residues.
-    auto residue_gCD    = MN - gCD(_0{});                                               // (res_m, res_n)
-    auto residue_tCDgCD = MN - tCDgCD(_0{});                                            // (res_m, res_n)
-
-    // Pass data to fusions.
-    // FIXME: Some Xe visitors expect subgroup tiles/coordinates here and should be updated to accept
-    //        workgroup tiles/coordinates, like the NV code. Note that CuTe has no concept of a "subgroup tile."
-    //        Work division within a TiledMMA is flexible, and a subgroup's data need not be contiguous.
-    //        Instead, visitors should retrieve data coordinates within the WG tile via tDgD.
-    constexpr bool RefSrc = true;
-    auto cst_args = cutlass::epilogue::fusion::detail::ConsumerStoreArgs {
-        problem_shape_mnkl,
-        WGTileMNK{},
-        tile_coord_mnkl,
-        TiledMMA{},
-        EpilogueTile{},
-        copy_d,
-        gCD,
-        residue_gCD,
-        tDgD,
-        residue_tCDgCD,
-        tCrC_compute,
-        thread_idx,
-    };
-    auto cst_callbacks = fusion_callbacks.template get_consumer_store_callbacks<RefSrc>(cst_args);
-
-    // Epilogue visitors work on cutlass::Arrays of values for better vectorization.
-    // For now, choose array size so there is one array per MMA atom C tile -- later
-    //   we might want to make it configurable (FragmentSize in NV code).
-    using ElementAccumulator = typename Accumulator::element_type;
-    constexpr int ComputeVectorLen = size<0>(Accumulator{});
-    auto tiled_acc_v = recast<Array<ElementAccumulator, ComputeVectorLen>>(tiled_acc);
-
-    // Create D subgroup fragments for epilogue compute.
-    using FragmentVisit = decltype(cst_callbacks.visit(tiled_acc_v(0), 0, 0, 0));
-    using ElementVisit = typename FragmentVisit::Element;
-
-    auto tDrD_compute_wi = make_fragment_like<ElementVisit>(tiled_acc(_,_0{},_0{}));
-    auto tDrD_compute = make_subgroup_tensor(tDrD_compute_wi, cd_compute_tv);           // (mma_v,mma_m,mma_n)
-    auto tDrD_compute_v = recast<FragmentVisit>(tDrD_compute_wi);
-
-    // Outer loops over epilogue tiles.
-    constexpr auto EpiTilesM = size<2>(gCD_epi);
-    constexpr auto EpiTilesN = size<3>(gCD_epi);
-
-    cst_callbacks.begin();
-
-    CUTLASS_PRAGMA_UNROLL
-    for (int epi_m = 0; epi_m < EpiTilesM; epi_m++) {
-      CUTLASS_PRAGMA_UNROLL
-      for (int epi_n = 0; epi_n < EpiTilesN; epi_n++) {
-        cst_callbacks.begin_loop(epi_m, epi_n);
-
-        // Load C + reorder.
-        if constexpr (is_source_supported) {
-          if (is_C_load_needed) {
-            copy(copy_c, tCgC(_,_,_,epi_m,epi_n), tCrC);
-            reorder(tCrC, tCrC_compute);
-          }
-        }
-
-        cst_callbacks.previsit(epi_m, epi_n, 0, is_C_load_needed);
-
-        // Epilogue computation, one ComputeVectorLen-sized array at a time.
-        CUTLASS_PRAGMA_UNROLL
-        for (int epi_v = 0; epi_v < size<0>(tiled_acc_v); ++epi_v) {
-          tDrD_compute_v(epi_v) = cst_callbacks.visit(tiled_acc_v(epi_v, epi_m, epi_n),
-                                                      epi_v, epi_m, epi_n);
-        }
-
-        bool last_epi = (epi_m == EpiTilesM - 1) && (epi_n == EpiTilesN - 1);
-        cst_callbacks.reduce(nullptr, [=]{}, epi_m, epi_n, last_epi, tDrD_compute_v);
-
-        // Reorder D (possibly including data conversion) and store.
-        if constexpr (is_destination_supported) {
-          reorder(tDrD_compute, tDrD);
-          copy(copy_d, tDrD, tDgD(_,_,_,epi_m,epi_n));
-        }
-
-        cst_callbacks.end_loop(epi_m, epi_n);
-      }
-    }
-
-    cst_callbacks.end();
-  }
-
-  template <typename ProblemShape_MNKL>
-  CUTLASS_DEVICE auto update_tensor_shape_stride(
-    int32_t const& next_group,
-    ProblemShape_MNKL const& problem_shape_mnkl) {
-      auto [M, N, K, L] = problem_shape_mnkl;
-
-      TensorC mC_mnl;
-      TensorD mD_mnl;
-      if constexpr (is_source_supported) {
-        ElementC const* ptr_C_curr_batch = reinterpret_cast<ElementC const*>(params.ptr_C[next_group]);
-        mC_mnl = make_tensor(make_gmem_ptr(ptr_C_curr_batch), make_layout(make_shape(M, N, L), params.dC[next_group]));
-      }
-
-      if constexpr (is_destination_supported) {
-        ElementD* ptr_D_curr_batch = reinterpret_cast<ElementD*>(params.ptr_D[next_group]);
-        mD_mnl = make_tensor(make_gmem_ptr(ptr_D_curr_batch), make_layout(make_shape(M, N, L), params.dD[next_group]));
-      }
-      return cute::make_tuple(mC_mnl, mD_mnl);
-    }
-
-private:
-  Params const& params;
-  FusionCallbacks fusion_callbacks;
 };
 
 
