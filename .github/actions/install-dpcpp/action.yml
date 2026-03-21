@@ -90,6 +90,7 @@ runs:
       if: inputs.DPCPP_RELEASE == 'RELEASE'
       shell: bash
       run: |
+        unset no_proxy
         shopt -s expand_aliases
         which sudo || alias sudo=""
         wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | \
