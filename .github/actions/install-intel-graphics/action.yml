@@ -54,9 +54,7 @@ runs:
       shell: bash
       run: |
         shopt -s expand_aliases
-        which sudo || alias sudo=""
-        export no_proxy=127.0.0.1,localhost,apt.repos.intel.com,mlpc.intel.com,*.intel.com
-        
+        which sudo || alias sudo=""        
         if [[ "${{ inputs.GPU }}" == "PVC" ]]; then
           # Purge existing intel graphics packages
           dpkg -l | grep -E 'libigc|intel-igc|libigdgmm|libigdfcl|libze-intel-gpu|libze1|libze-dev|intel-opencl-icd|intel-metrics-discovery|intel-gsc|intel-ocloc' | awk '{print $2}' | xargs -r sudo apt-get purge -y || true
