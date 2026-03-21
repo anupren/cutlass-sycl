@@ -53,6 +53,8 @@ runs:
       if: inputs.IGC == 'LTS'
       shell: bash
       run: |
+        export no_proxy="127.0.0.1,localhost,apt.repos.intel.com,mlpc.intel.com,*.intel.com"
+ 
         shopt -s expand_aliases
         which sudo || alias sudo=""        
         if [[ "${{ inputs.GPU }}" == "PVC" ]]; then
