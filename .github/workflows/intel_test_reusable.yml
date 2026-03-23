@@ -110,3 +110,28 @@ jobs:
         run: |
           cmake --build . --target test_examples -j 1
       
+      - name: Benchmarks
+        shell: bash
+        run: |
+          cmake --build . --target cutlass_benchmarks
+      
+      - name: Cleanup DPC++
+        if: always()
+        shell: bash
+        run: |
+          echo "Cleaning up DPC++ installation..."
+          DPCPP_PATH="${{ inputs.DPCPP_PATH || '~/dpcpp' }}"
+          DPCPP_PATH=$(eval echo $DPCPP_PATH)
+          if [ -d "$DPCPP_PATH" ]; then
+            echo "Removing DPCPP directory: $DPCPP_PATH"
+            sudo rm -rf "$DPCPP_PATH"
+          fi
+          if [[ "${{ matrix.compiler }}" == "RELEASE" ]]; then
+            echo "Removing OneAPI packages..."
+            sudo apt remove -y intel-oneapi-runtime-libs intel-oneapi-compiler-dpcpp-cpp || true
+            sudo rm -f /etc/apt/sources.list.d/oneAPI.list
+            sudo rm -f /usr/share/keyrings/oneapi-archive-keyring.gpg
+          fi
+          rm -f setvars.sh
+          rm -rf build/ || true
+          echo "DPC++ cleanup completed"
