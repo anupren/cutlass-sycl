@@ -80,7 +80,7 @@ runs:
 
         #Install Latest IGC
         sudo rm -f /etc/apt/sources.list.d/intel-gpu-*.list
-        sudo add-apt-repository ppa:kobuk-team/intel-graphics
+        sudo -E add-apt-repository ppa:kobuk-team/intel-graphics
         sudo apt update
         sudo apt install libigc2 -y
         else
