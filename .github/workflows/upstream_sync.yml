@@ -29,12 +29,12 @@ on:
       claude_model:
         description: Claude model to use for conflict resolution
         required: false
-        default: us.anthropic.claude-opus-4-1-20250805-v1:0
+        default: anthropic.claude-opus-4-6-v1
         type: string
       max_turns:
         description: Maximum Claude turns for this sync run
         required: false
-        default: "20"
+        default: "60"
         type: string
       aws_region:
         description: AWS region for Bedrock runs
@@ -64,8 +64,8 @@ jobs:
       SYNC_PROVIDER: ${{ inputs.provider || 'bedrock' }}
       SYNC_UPSTREAM_BRANCH: ${{ inputs.upstream_branch || 'main' }}
       SYNC_BASE_BRANCH: ${{ inputs.base_branch || github.base_ref || 'main' }}
-      SYNC_CLAUDE_MODEL: ${{ inputs.claude_model || 'us.anthropic.claude-opus-4-1-20250805-v1:0' }}
-      SYNC_MAX_TURNS: ${{ inputs.max_turns || '20' }}
+      SYNC_CLAUDE_MODEL: ${{ inputs.claude_model || 'anthropic.claude-opus-4-6-v1' }}
+      SYNC_MAX_TURNS: ${{ inputs.max_turns || '60' }}
       SYNC_AWS_REGION: ${{ inputs.aws_region || 'us-east-2' }}
 
     steps:
@@ -142,7 +142,6 @@ jobs:
           RESOLVED_MODEL="${SYNC_CLAUDE_MODEL}"
 
           if [ "${SYNC_PROVIDER}" = "anthropic" ]; then
-            # Strip regional prefix for Anthropic API.
             if [[ "${RESOLVED_MODEL}" == us.anthropic.* ]]; then
               RESOLVED_MODEL="${RESOLVED_MODEL#us.anthropic.}"
               echo "::notice::Stripped Bedrock prefix for Anthropic: '${RESOLVED_MODEL}'."
@@ -152,9 +151,11 @@ jobs:
             elif [[ "${RESOLVED_MODEL}" == apac.anthropic.* ]]; then
               RESOLVED_MODEL="${RESOLVED_MODEL#apac.anthropic.}"
               echo "::notice::Stripped Bedrock prefix for Anthropic: '${RESOLVED_MODEL}'."
+            elif [[ "${RESOLVED_MODEL}" == anthropic.* ]]; then
+              RESOLVED_MODEL="${RESOLVED_MODEL#anthropic.}"
+              echo "::notice::Stripped anthropic prefix for Anthropic API: '${RESOLVED_MODEL}'."
             fi
           elif [ "${SYNC_PROVIDER}" = "bedrock" ]; then
-            # Bedrock requires an inference profile id (regional prefix) or a profile ARN.
             if [[ "${RESOLVED_MODEL}" == arn:aws:bedrock:* ]]; then
               echo "::notice::Using Bedrock inference profile ARN for model selection."
             elif [[ "${RESOLVED_MODEL}" == anthropic.* ]]; then
@@ -170,6 +171,7 @@ jobs:
           echo "Resolved model: ${RESOLVED_MODEL}"
 
       - name: Run Claude Code upstream sync resolution
+        if: env.MERGE_STATE == 'conflict'
         uses: anthropics/claude-code-action@v1.0.80
         env:
           CLAUDE_CODE_USE_BEDROCK: ${{ (inputs.provider || 'bedrock') == 'bedrock' && '1' || '0' }}
@@ -199,17 +201,7 @@ jobs:
             - Preserve Intel-specific CI/workflow logic and Intel copyright headers.
             - Bring over upstream CUTLASS changes that are compatible with this fork.
             - Discard or revert NVIDIA-only and CUDA-only changes when they conflict with this fork's Intel/Xe direction.
-            - When upstream introduces clearly NVIDIA-specific files or workflows that do not belong in this fork, remove them from the sync result rather than forcing them through.
-            - Do not overwrite Intel/Xe adaptations with upstream NVIDIA assumptions.
             - Keep the result conservative and focused on upstream sync only.
-
-            Priority areas to preserve:
-            - include/cutlass/** Intel/Xe/SYCL specializations
-            - include/cute/** where this fork has Intel/Xe changes
-            - python/cutlass_library/** Intel architecture and generator logic
-            - examples/** Intel Xe and SYCL examples
-            - test/** Intel SYCL tests
-            - .github/workflows/** Intel CI and maintenance workflows
 
             Before finishing:
             - Ensure there are no unmerged files.
@@ -219,6 +211,7 @@ jobs:
           claude_args: |
             --model ${{ env.SYNC_CLAUDE_MODEL_RESOLVED }}
             --max-turns ${{ env.SYNC_MAX_TURNS }}
+            --dangerously-skip-permissions
 
       - name: Finalize sync commit
         id: finalize
@@ -227,7 +220,7 @@ jobs:
           set -euo pipefail
 
           if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
-            echo "::error::Claude sync left unresolved merge conflicts"
+            echo "::error::Sync left unresolved merge conflicts"
             git diff --name-only --diff-filter=U
             exit 1
           fi
@@ -255,13 +248,13 @@ jobs:
           fi
 
       - name: Push sync branch
-        if: github.event_name == 'workflow_dispatch' && steps.finalize.outputs.has_changes == 'true'
+        if: steps.finalize.outputs.has_changes == 'true'
         shell: bash
         run: |
           git push --set-upstream origin "${{ env.BRANCH_NAME }}"
 
       - name: Create or update PR
-        if: github.event_name == 'workflow_dispatch' && steps.finalize.outputs.has_changes == 'true' && inputs.create_pr
+        if: steps.finalize.outputs.has_changes == 'true' && inputs.create_pr
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -316,9 +309,6 @@ jobs:
           echo "- Upstream commit: [${{ env.UPSTREAM_SHORT }}](https://github.com/NVIDIA/cutlass/commit/${{ env.UPSTREAM_COMMIT }})" >> "$GITHUB_STEP_SUMMARY"
           echo "- Sync branch: ${{ env.BRANCH_NAME }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Merge state at start: ${{ env.MERGE_STATE }}" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "- Mode: PR test run only, no branch push or PR creation" >> "$GITHUB_STEP_SUMMARY"
-          fi
           if [ "${{ steps.finalize.outputs.has_changes }}" = "true" ]; then
             echo "- Result: sync branch pushed" >> "$GITHUB_STEP_SUMMARY"
           else
