@@ -11,6 +11,19 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Diagnostics
+      shell: bash
+      run: |
+        echo "=== ACTION DIAGNOSTICS ==="
+        echo "GPU input: '${{ inputs.GPU }}'"
+        echo "IGC input: '${{ inputs.IGC }}'"
+        echo "GPU length: ${#GPU_VAR}"
+        echo "IGC length: ${#IGC_VAR}"
+        echo "=== END DIAGNOSTICS ==="
+      env:
+        GPU_VAR: ${{ inputs.GPU }}
+        IGC_VAR: ${{ inputs.IGC }}
+
     - name: Install Intel graphics drivers
       if: inputs.IGC == 'ROLLING'
       shell: bash
@@ -100,3 +113,12 @@ runs:
           echo "ERROR: LTS mode only supports PVC GPU (got ${{ inputs.GPU }})"
           exit 1
         fi
+    
+    - name: Fallback - No matching IGC mode
+      if: success()
+      shell: bash
+      run: |
+        echo "WARNING: No matching IGC mode found!"
+        echo "GPU: '${{ inputs.GPU }}'"
+        echo "IGC: '${{ inputs.IGC }}'"
+        echo "Expected IGC values: ROLLING, STAGING, or LTS"
