@@ -118,8 +118,7 @@ jobs:
           echo "UPSTREAM_SHORT=${UPSTREAM_SHORT}" >> "$GITHUB_ENV"
           echo "BRANCH_NAME=${BRANCH_NAME}" >> "$GITHUB_ENV"
 
-          git checkout "${SYNC_BASE_BRANCH}"
-          git pull --ff-only origin "${SYNC_BASE_BRANCH}"
+          git checkout -B "${SYNC_BASE_BRANCH}" "origin/${SYNC_BASE_BRANCH}"
           git checkout -b "${BRANCH_NAME}"
 
           set +e
