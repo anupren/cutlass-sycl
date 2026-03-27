@@ -29,7 +29,7 @@ on:
       claude_model:
         description: Claude model to use for conflict resolution
         required: false
-        default: anthropic.claude-4-0-sonnet-20250805-v1:0
+        default: ""
         type: string
       max_turns:
         description: Maximum Claude turns for this sync run
@@ -64,7 +64,7 @@ jobs:
       SYNC_PROVIDER: ${{ inputs.provider || 'bedrock' }}
       SYNC_UPSTREAM_BRANCH: ${{ inputs.upstream_branch || 'main' }}
       SYNC_BASE_BRANCH: ${{ inputs.base_branch || github.base_ref || 'main' }}
-      SYNC_CLAUDE_MODEL: ${{ inputs.claude_model || 'anthropic.claude-4-0-sonnet-20250805-v1:0' }}
+      SYNC_CLAUDE_MODEL: ${{ inputs.claude_model || '' }}
       SYNC_MAX_TURNS: ${{ inputs.max_turns || '20' }}
       SYNC_AWS_REGION: ${{ inputs.aws_region || 'us-east-2' }}
 
@@ -134,6 +134,32 @@ jobs:
 
           git diff --name-only --diff-filter=U > conflicted_files.txt || true
 
+      - name: Resolve Claude model id
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RESOLVED_MODEL="${SYNC_CLAUDE_MODEL}"
+
+          if [ -z "${RESOLVED_MODEL}" ]; then
+            if [ "${SYNC_PROVIDER}" = "anthropic" ]; then
+              RESOLVED_MODEL="claude-opus-4-6"
+            else
+              RESOLVED_MODEL="anthropic.claude-3-7-sonnet-20250219-v1:0"
+            fi
+          fi
+
+          # Bedrock commonly expects regional inference profile IDs (us./eu./apac.).
+          # If the caller passes a raw anthropic model ID, default to us.* for compatibility.
+          if [ "${SYNC_PROVIDER}" = "bedrock" ]; then
+            if [[ "${RESOLVED_MODEL}" != us.* && "${RESOLVED_MODEL}" != eu.* && "${RESOLVED_MODEL}" != apac.* ]]; then
+              RESOLVED_MODEL="us.${RESOLVED_MODEL}"
+              echo "::notice::Normalized Bedrock model id to '${RESOLVED_MODEL}'. Override claude_model input if needed."
+            fi
+          fi
+
+          echo "SYNC_CLAUDE_MODEL_RESOLVED=${RESOLVED_MODEL}" >> "$GITHUB_ENV"
+
       - name: Run Claude Code upstream sync resolution
         uses: anthropics/claude-code-action@v1
         env:
@@ -180,7 +206,7 @@ jobs:
             - Stage the final result with git add -A.
             - Do not create the PR yourself.
           claude_args: |
-            --model ${{ env.SYNC_CLAUDE_MODEL }}
+            --model ${{ env.SYNC_CLAUDE_MODEL_RESOLVED }}
             --max-turns ${{ env.SYNC_MAX_TURNS }}
 
       - name: Finalize sync commit
