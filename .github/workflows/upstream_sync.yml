@@ -140,23 +140,18 @@ jobs:
           set -euo pipefail
 
           RESOLVED_MODEL="${SYNC_CLAUDE_MODEL}"
-          FALLBACK_MODEL=""
 
+          # Always use Claude Opus.
           if [ -z "${RESOLVED_MODEL}" ]; then
             if [ "${SYNC_PROVIDER}" = "anthropic" ]; then
               RESOLVED_MODEL="claude-opus-4-6"
             else
-              RESOLVED_MODEL="us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+              RESOLVED_MODEL="us.anthropic.claude-opus-4-6"
             fi
           fi
 
-          # Normalize model ids to provider-compatible formats and set a fallback model.
+          # Normalize model id to provider-compatible format for Bedrock.
           if [ "${SYNC_PROVIDER}" = "bedrock" ]; then
-            if [ "${RESOLVED_MODEL}" = "claude-opus-4-6" ]; then
-              RESOLVED_MODEL="us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-              echo "::notice::claude-opus-4-6 is not a Bedrock model id. Falling back to '${RESOLVED_MODEL}' for Bedrock."
-            fi
-
             # Bedrock requires an inference profile id (regional prefix) or a profile ARN.
             if [[ "${RESOLVED_MODEL}" == arn:aws:bedrock:* ]]; then
               echo "::notice::Using Bedrock inference profile ARN for model selection."
@@ -165,18 +160,12 @@ jobs:
               echo "::notice::Converted Bedrock model to inference profile id '${RESOLVED_MODEL}'."
             elif [[ "${RESOLVED_MODEL}" != us.* && "${RESOLVED_MODEL}" != eu.* && "${RESOLVED_MODEL}" != apac.* ]]; then
               RESOLVED_MODEL="us.anthropic.${RESOLVED_MODEL}"
-              echo "::notice::Normalized Bedrock model id to '${RESOLVED_MODEL}'. Override claude_model input if needed."
+              echo "::notice::Normalized Bedrock model id to '${RESOLVED_MODEL}'."
             fi
-
-            FALLBACK_MODEL="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-          else
-            FALLBACK_MODEL="claude-sonnet-4-5"
           fi
 
           echo "SYNC_CLAUDE_MODEL_RESOLVED=${RESOLVED_MODEL}" >> "$GITHUB_ENV"
-          echo "SYNC_CLAUDE_FALLBACK_MODEL=${FALLBACK_MODEL}" >> "$GITHUB_ENV"
           echo "Resolved model: ${RESOLVED_MODEL}"
-          echo "Fallback model: ${FALLBACK_MODEL}"
 
       - name: Run Claude Code upstream sync resolution
         uses: anthropics/claude-code-action@v1.0.80
@@ -189,7 +178,7 @@ jobs:
           anthropic_api_key: ${{ (inputs.provider || 'bedrock') == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
           github_token: ${{ github.token }}
           use_bedrock: ${{ (inputs.provider || 'bedrock') == 'bedrock' && 'true' || 'false' }}
-          fallback_model: ${{ env.SYNC_CLAUDE_FALLBACK_MODEL }}
+          model: ${{ env.SYNC_CLAUDE_MODEL_RESOLVED }}
           prompt: |
             You are resolving an upstream sync from NVIDIA/cutlass into this Intel SYCL fork.
 
