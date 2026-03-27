@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Copyright (C) 2025 Intel Corporation, All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #

@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,11 +38,10 @@
     computation lies in operator() with private member variables  {col_permute_, row_permute_ and stride_} as new addresses after permute op.
 */
 #pragma once
-
-#if !defined(CUTLASS_ENABLE_SYCL)
+#include "cutlass/cutlass.h"
+#ifndef __QNX__
 #include CUDA_STD_HEADER(cassert)
 #endif
-#include "cutlass/cutlass.h"
 #include "cutlass/fast_math.h"
 #include "cutlass/layout/pitch_linear.h"
 #include "cutlass/layout/matrix.h"
@@ -317,7 +316,7 @@ public:
   LongIndex operator()(MatrixCoord coord) const {
 
     // The batch index for BMM
-    Index BMM_batch_idx = BlockIdxZ();
+    Index BMM_batch_idx = blockIdx.z;
     
     // [i,j,k,l] -> [i,k,j,l]
     Index l = coord.column();
@@ -380,7 +379,7 @@ public:
   LongIndex operator()(MatrixCoord coord) const {
 
     // The batch index for BMM
-    Index BMM_batch_idx = BlockIdxZ();
+    Index BMM_batch_idx = blockIdx.z;
     
     // The following assumes grouping [(D0)->batch, (D2)->row, (D1,D3)->col]
     Index l = coord.column() % D3_;
@@ -452,7 +451,7 @@ public:
   CUTLASS_HOST_DEVICE
   LongIndex operator()(MatrixCoord coord) const {
 
-    Index BMM_batch_idx = BlockIdxZ();
+    Index BMM_batch_idx = blockIdx.z;
     
     // [i,j,k,l] -> [i,k,j,l]
     Index l = coord.column();
@@ -513,7 +512,7 @@ public:
   CUTLASS_HOST_DEVICE
   LongIndex operator()(MatrixCoord coord) const {
 
-    Index BMM_batch_idx = BlockIdxZ();
+    Index BMM_batch_idx = blockIdx.z;
     
     // The following assumes grouping [(D0)->batch, (D1,D2)->row, (D3)->col]
     Index l = coord.column();

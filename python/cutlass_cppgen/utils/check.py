@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -37,14 +37,7 @@ Utility functions for checking constraints on kernels and calculating kernel att
 import ctypes
 
 from cutlass_library import DataTypeSize, KernelScheduleSuffixes, OperationKind, SharedMemPerCC
-from cutlass_library.arch_constants import (
-    INTEL_XE_ARCH_MIN, 
-    INTEL_XE_ARCH_MAX, 
-    INTEL_XE12, 
-    INTEL_XE20, 
-    INTEL_XE35,
-    is_intel_xe_arch
-)
+
 import cutlass_cppgen
 from cutlass_cppgen.backend.library import TileDescription
 
@@ -126,22 +119,11 @@ def valid_stage_count(
                 "result in compilation errors if the combination of tile shape, "
                 "stage count, and shared memory requirement of the epilogue exceeds "
                 "the available shared memory per SM.")
-    print(f"KernelCC: {kernel_cc}")
-    if is_intel_xe_arch(kernel_cc):
-        if (td.stages is None or td.stages == 0):
-            # Support for Intel Xe GPUs currently does not allow explicit
-            # specification of the stage count. With None or 0, the 
-            # CollectiveBuilder automatically determines the stage count to use.
-            return (True, "")
-        elif verbose:
-            cutlass_cppgen.logger.warning(
-                "Setting an explicit stage count for Intel Xe GPUs is currently "
-                "not supported.")
 
     if td.stages <= 0:
         return (False, f"Stage counts must be positive integers. Tile description has stage count of {td.stages}.")
 
-    if cc >= 50 and cc < 80 and td.stages != 2:
+    if cc < 80 and td.stages != 2:
         return (False, f"Tile description has stage count of {td.stages}, "
                        f"but only 2 stages are supported on SM{cc}.")
 

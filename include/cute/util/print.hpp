@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -133,6 +133,18 @@ print(uint4b_t a) {
 
 CUTE_HOST_DEVICE
 void
+print(int6b_t a) {
+  printf("%d", int(a));
+}
+
+CUTE_HOST_DEVICE
+void
+print(uint6b_t a) {
+  printf("%d", int(a));
+}
+
+CUTE_HOST_DEVICE
+void
 print(bin1_t a) {
   printf("%d", int(a));
 }
@@ -249,6 +261,16 @@ pretty_print(uint4b_t a) {
 #else
   printf("%*d", 5, int(a));
 #endif
+}
+
+CUTE_HOST_DEVICE void
+pretty_print(int6b_t a) {
+  printf("%*d", 5, int(a));
+}
+
+CUTE_HOST_DEVICE void
+pretty_print(uint6b_t a) {
+  printf("%*d", 5, int(a));
 }
 
 CUTE_HOST_DEVICE void

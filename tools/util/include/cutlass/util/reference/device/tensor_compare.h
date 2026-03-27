@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -54,20 +53,15 @@ namespace device {
 namespace kernel {
 
 template <typename Element>
-#if defined (CUTLASS_ENABLE_SYCL)
-void
-#else
-__global__ void
-#endif
- BlockCompareEqual(
+__global__ void BlockCompareEqual(
   int *equal, 
   Element const *ptr_A,
   Element const *ptr_B,
   size_t capacity) {
 
-  size_t idx = ThreadIdxX() + BlockDimX() * BlockIdxX();
+  size_t idx = threadIdx.x + blockDim.x * blockIdx.x;
 
-  for (; idx < capacity; idx += GridDimX() * BlockDimX()) {
+  for (; idx < capacity; idx += gridDim.x * blockDim.x) {
 
     Element a = cutlass::ReferenceFactory<Element>::get(ptr_A, idx);
     Element b = cutlass::ReferenceFactory<Element>::get(ptr_B, idx);
@@ -81,12 +75,7 @@ __global__ void
 }
 
 template <typename Element>
-#if defined (CUTLASS_ENABLE_SYCL)
-void
-#else
-__global__ void
-#endif
- BlockCompareRelativelyEqual(
+__global__ void BlockCompareRelativelyEqual(
   int *equal, 
   Element const *ptr_A,
   Element const *ptr_B,
@@ -94,44 +83,17 @@ __global__ void
   Element epsilon,
   Element nonzero_floor) {
 
-  size_t idx = ThreadIdxX() + BlockDimX() * BlockIdxX();
+  size_t idx = threadIdx.x + blockDim.x * blockIdx.x;
 
-  for (; idx < capacity; idx += GridDimX() * BlockDimX()) {
+  for (; idx < capacity; idx += gridDim.x * blockDim.x) {
 
     Element a = cutlass::ReferenceFactory<Element>::get(ptr_A, idx);
     Element b = cutlass::ReferenceFactory<Element>::get(ptr_B, idx);
 
     if (!relatively_equal(a, b, epsilon, nonzero_floor)) {
-#ifdef SHOW_DIFF
-      printf("[%zu]: %f vs %f\n", idx, (double) a, (double) b);
-#endif
       *equal = 0;
       return;
     }
-  }
-}
-
-template <template <class> class BinaryOp, typename Element>
-#if defined (CUTLASS_ENABLE_SYCL)
-void
-#else
-__global__ void
-#endif
-BlockElementwiseOp(
-  Element *ptr_dst,
-  Element const *ptr_A,
-  Element const *ptr_B,
-  size_t capacity) {
-
-  BinaryOp<Element> bin_op{};
-
-  const size_t start = ThreadIdxX() + BlockDimX() * BlockIdxX();
-  const size_t step = GridDimX() * BlockDimX();
-  for (size_t idx = start; idx < capacity; idx += step) {
-    Element a = cutlass::ReferenceFactory<Element>::get(ptr_A, idx);
-    Element b = cutlass::ReferenceFactory<Element>::get(ptr_B, idx);
-
-    cutlass::ReferenceFactory<Element>::get(ptr_dst, idx) = bin_op(a, b);
   }
 }
 
@@ -139,8 +101,6 @@ BlockElementwiseOp(
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-
-template<class> class BlockCompareEqualKernelName;
 
 /// Performs a bit-level equality check between two blocks
 template <typename Element>
@@ -155,13 +115,6 @@ bool BlockCompareEqual(
   int equal_flag = 1;
   int *device_equal_flag = nullptr;
 
-#if defined (CUTLASS_ENABLE_SYCL)
-  device_equal_flag = reinterpret_cast<int*>(compat::malloc(sizeof(int)));
-  if (device_equal_flag == nullptr) {
-    throw std::runtime_error("Failed to allocate device flag.");
-  }
-  compat::memcpy(device_equal_flag, &equal_flag, sizeof(int));
-#else
   if (cudaMalloc((void **)&device_equal_flag, sizeof(int)) != cudaSuccess) {
     throw std::runtime_error("Failed to allocate device flag.");
   }
@@ -174,14 +127,9 @@ bool BlockCompareEqual(
 
     throw std::runtime_error("Failed to copy equality flag to device.");
   }
-#endif
 
   if (!grid_size || !block_size) {
-#if defined (CUTLASS_ENABLE_SYCL)
-    block_size = 128;
-    grid_size = (capacity + block_size - 1) / block_size;
-    grid_size = (grid_size < 64 ? grid_size : 64); // limit grid size to avoid out_of_resources runtime error.
-#else
+
     // if grid_size or block_size are zero, query occupancy using the CUDA Occupancy API
     cudaError_t result = cudaOccupancyMaxPotentialBlockSize(
       &grid_size,
@@ -194,19 +142,8 @@ bool BlockCompareEqual(
     // Limit block size. This has the effect of increasing the number of items processed by a
     // single thread and reduces the impact of initialization overhead.
     block_size = (block_size < 128 ? block_size : 128);
-#endif
   }
 
-#if defined(CUTLASS_ENABLE_SYCL)
-  const auto sycl_block = compat::dim3(block_size, 1, 1);
-  const auto sycl_grid = compat::dim3(grid_size, 1, 1);
-  compat::launch<kernel::BlockCompareEqual<Element>, BlockCompareEqualKernelName<Element>>(sycl_grid, sycl_block, device_equal_flag, ptr_A, ptr_B, capacity);
-  compat::wait();
-
-  compat::memcpy(&equal_flag, device_equal_flag, sizeof(int));
-
-  compat::free(reinterpret_cast<void*>(device_equal_flag));
-#else
   dim3 grid(grid_size, 1, 1);
   dim3 block(block_size, 1, 1);
 
@@ -226,14 +163,11 @@ bool BlockCompareEqual(
   }
 
   cudaFree(device_equal_flag);
-#endif
 
   return equal_flag;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-
-template<class> class BlockCompareRelativelyEqualName;
 
 /// Performs a bit-level equality check between two blocks
 template <typename Element>
@@ -250,13 +184,6 @@ bool BlockCompareRelativelyEqual(
   int equal_flag = 1;
   int *device_equal_flag = nullptr;
 
-#if defined (CUTLASS_ENABLE_SYCL)
-  device_equal_flag = reinterpret_cast<int*>(compat::malloc(sizeof(int)));
-  if (device_equal_flag == nullptr) {
-    throw std::runtime_error("Failed to allocate device flag.");
-  }
-  compat::memcpy(device_equal_flag, &equal_flag, sizeof(int));
-#else
   if (cudaMalloc((void **)&device_equal_flag, sizeof(int)) != cudaSuccess) {
     throw std::runtime_error("Failed to allocate device flag.");
   }
@@ -269,14 +196,9 @@ bool BlockCompareRelativelyEqual(
 
     throw std::runtime_error("Failed to copy equality flag to device.");
   }
-#endif
 
   if (!grid_size || !block_size) {
-#if defined (CUTLASS_ENABLE_SYCL)
-    block_size = 128;
-    grid_size = (capacity + block_size - 1) / block_size;
-    grid_size = (grid_size < 64 ? grid_size : 64); // limit grid size to avoid out_of_resources runtime error.
-#else
+
     // if grid_size or block_size are zero, query occupancy using the CUDA Occupancy API
     cudaError_t result = cudaOccupancyMaxPotentialBlockSize(
       &grid_size,
@@ -289,21 +211,8 @@ bool BlockCompareRelativelyEqual(
     // Limit block size. This has the effect of increasing the number of items processed by a
     // single thread and reduces the impact of initialization overhead.
     block_size = (block_size < 128 ? block_size : 128);
-#endif
   }
 
-#if defined(CUTLASS_ENABLE_SYCL)
-  const auto sycl_block = compat::dim3(block_size, 1, 1);
-  const auto sycl_grid = compat::dim3(grid_size, 1, 1);
-
-  compat::launch<kernel::BlockCompareRelativelyEqual<Element>, BlockCompareRelativelyEqualName<Element>>(sycl_grid, sycl_block, device_equal_flag, ptr_A, ptr_B, capacity,
-                                                                  epsilon, nonzero_floor);
-  compat::wait();
-
-  compat::memcpy(&equal_flag, device_equal_flag, sizeof(int));
-
-  compat::free(reinterpret_cast<void*>(device_equal_flag));
-#else
   dim3 grid(grid_size, 1, 1);
   dim3 block(block_size, 1, 1);
 
@@ -330,58 +239,8 @@ bool BlockCompareRelativelyEqual(
   }
 
   cudaFree(device_equal_flag);
-#endif
 
   return equal_flag;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-template<template<class> class, class> class BlockElementwiseOpKernelName; 
-
-/// Performs an elementwise function of two blocks
-template <template <class> class BinaryOp, typename Element>
-void BlockElementwiseOp(
-  Element *ptr_dst,
-  Element const *ptr_A,
-  Element const *ptr_B,
-  size_t capacity,
-  int grid_size = 0,
-  int block_size = 0) {
-
-
-  if (!grid_size || !block_size) {
-#if defined (CUTLASS_ENABLE_SYCL)
-    block_size = 128;
-    grid_size = (capacity + block_size - 1) / block_size;
-    grid_size = (grid_size < 64 ? grid_size : 64); // limit grid size to avoid out_of_resources runtime error.
-#else
-    // if grid_size or block_size are zero, query occupancy using the CUDA Occupancy API
-    cudaError_t result = cudaOccupancyMaxPotentialBlockSize(
-      &grid_size,
-      &block_size,
-      reinterpret_cast<void const *>(kernel::BlockElementwiseOp<BinaryOp, Element>));
-
-    if (result != cudaSuccess) {
-      throw std::runtime_error("Failed to query occupancy.");
-    }
-
-    // Limit block size. This has the effect of increasing the number of items processed by a
-    // single thread and reduces the impact of initialization overhead.
-    block_size = (block_size < 128 ? block_size : 128);
-#endif
-  }
-
-#if defined(CUTLASS_ENABLE_SYCL)
-  const auto sycl_block = compat::dim3(block_size, 1, 1);
-  const auto sycl_grid = compat::dim3(grid_size, 1, 1);
-  compat::launch<kernel::BlockElementwiseOp<BinaryOp, Element>, BlockElementwiseOpKernelName<BinaryOp, Element>>(
-      sycl_grid, sycl_block, ptr_dst, ptr_A, ptr_B, capacity);
-#else
-  dim3 grid(grid_size, 1, 1);
-  dim3 block(block_size, 1, 1);
-  kernel::BlockElementwiseOp<BinaryOp, Element><<< grid, block >>>(ptr_dst, ptr_A, ptr_B, capacity);
-#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

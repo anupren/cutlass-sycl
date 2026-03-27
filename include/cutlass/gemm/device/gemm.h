@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -492,26 +491,8 @@ public:
       }
     }
 
-#if defined(CUTLASS_ENABLE_SYCL)
-    const auto sycl_block = compat::dim3(block.x, block.y, block.z);
-    const auto sycl_grid = compat::dim3(grid.x, grid.y, grid.z);
-
-    auto q = stream ? *stream : compat::get_default_queue();
-    compat::experimental::launch<cutlass::Kernel<GemmKernel>, GemmKernel>(
-      compat::experimental::launch_policy{
-        sycl_grid, sycl_block,
-#if defined(SYCL_EXT_ONEAPI_WORK_GROUP_SCRATCH_MEMORY)
-          sycl::ext::oneapi::experimental::work_group_scratch_size(smem_size)
-#else
-          compat::experimental::local_mem_size{static_cast<std::size_t>(smem_size)}
-#endif
-      },
-      q, params_
-    );
-#else
     cutlass::arch::synclog_setup();
     cutlass::Kernel<GemmKernel><<<grid, block, smem_size, stream>>>(params_);
-#endif
 
     result = cudaGetLastError();
 

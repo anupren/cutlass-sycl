@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -35,14 +35,7 @@ import os
 import re
 import subprocess
 
-import cutlass_cppgen
 import torch
-import os
-from cutlass_library.arch_constants import ( INTEL_XE_ARCH_MIN, INTEL_XE_ARCH_MAX, INTEL_XE12, INTEL_XE20, is_intel_xe_arch)
-
-if not os.getenv("CUTLASS_USE_SYCL"):
-    import cuda
-import dpctl
 
 from cutlass_library import (
     DataType,
@@ -74,24 +67,16 @@ class GemmUniversalLauncher:
         self.math_operation = operation.tile_description.math_instruction.math_operation
         self.verification = verification
 
-        self.device = "cuda"
         if compiler_mode == "nvcc":
             compiler.nvcc()
-            self.stream = cuda.CUstream(0)
         elif compiler_mode == "nvrtc":
             compiler.nvrtc()
-            self.stream = cuda.CUstream(0)
-        elif compiler_mode == "dpcpp":
-            compiler.dpcpp()
-            self.stream = dpctl.SyclQueue("level_zero")
-            self.device = "xpu"
         else:
             raise Exception(f"Unexpected compiler string {compiler_mode}")
 
         op_list = [operation]
-        if operation.arch < 90 and not is_intel_xe_arch(operation.arch):
+        if operation.arch < 90:
             # Split K via Python is currently only supported for pre-SM90 kernels
-            # Exclude Intel Xe architectures as reduction is not implemented for Intel Xe
             self.reduction_operation: ReductionOperation = ReductionOperation(
                 shape=MatrixCoord(4, 32 * operation.C.alignment),
                 C=operation.C,
@@ -101,9 +86,6 @@ class GemmUniversalLauncher:
                 count=operation.C.alignment,
             )
             op_list.append(self.reduction_operation)
-        else:
-            # No reduction operation for Intel Xe architectures or SM90+
-            self.reduction_operation = None
 
         compiler.add_module(op_list, bypass_cache=False)
 
@@ -151,7 +133,7 @@ class GemmUniversalLauncher:
             # call uniform_ on a tensor with torch.float8_e4m3fn data:
             # RuntimeError: "check_uniform_bounds" not implemented for 'Float8_e4m3fn'
             data = torch.ceil(
-                torch.empty(size=(size,), dtype=torch.float32, device=self.device).uniform_(
+                torch.empty(size=(size,), dtype=torch.float32, device="cuda").uniform_(
                     self.rand_min - 0.5, self.rand_max - 0.5)
                 ).to(dtype)
         else:
@@ -171,7 +153,7 @@ class GemmUniversalLauncher:
         else:
             data_cutlass = data_ref.transpose(-1, -2).contiguous()
 
-        data_cutlass = data_cutlass_cppgen.to(self.device)
+        data_cutlass = data_cutlass.to("cuda")
 
         # As of this writing, few operations in PyTorch are supported with FP8 data.
         # Thus, we perform computation in FP32 for FP8 reference checks.
@@ -195,7 +177,7 @@ class GemmUniversalLauncher:
         if tensor_C is not None:
             devices.append(tensor_C.device.type)
 
-        if "cpu" in devices and devices != [self.device, self.device, "cpu"]:
+        if "cpu" in devices and devices != ["cuda", "cuda", "cpu"]:
             device = torch.device("cpu")
         else:
             device = tensor_A.device
@@ -278,12 +260,9 @@ class GemmUniversalLauncher:
             gemm_mode=mode,
             split_k_slices=split_k_slices,
             batch=batch_count,
-            stream=self.stream,
         )
 
         if mode == GemmUniversalMode.GemmSplitKParallel:
-            if self.reduction_operation is None:
-                raise RuntimeError("GemmSplitKParallel mode is not supported for Intel Xe architectures (reduction operation not implemented)")
             reduction_arguments = ReductionArguments(
                 self.reduction_operation,
                 problem_size=[problem_size.m, problem_size.n],
@@ -297,8 +276,7 @@ class GemmUniversalLauncher:
         self.operation.run(arguments)
 
         if mode == GemmUniversalMode.GemmSplitKParallel:
-            if self.reduction_operation is not None:
-                self.reduction_operation.run(reduction_arguments)
+            self.reduction_operation.run(reduction_arguments)
 
         passed = True
 
@@ -320,7 +298,7 @@ class GemmUniversalLauncher:
                 beta,
             )
 
-            tensor_D_ref = tensor_D_ref.to(self.device)
+            tensor_D_ref = tensor_D_ref.to('cuda')
 
             if self.operation.switched or self.operation.C.layout == LayoutType.ColumnMajor:
                 tensor_D = tensor_D.transpose(-1, -2).contiguous()

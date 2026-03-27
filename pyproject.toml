@@ -3,9 +3,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sycl-tla"
-version = "0.8.0"
-description = "sycl templates for linear algebra"
+name = "nvidia-cutlass"
+version = "4.2.0.0"
+description = "CUTLASS"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "BSD-3-Clause"}
@@ -15,14 +15,14 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+  "cuda-python>=11.8.0",
   "networkx",
   "numpy",
   "pydot",
   "scipy",
-  "treelib",
-  "ml_dtypes"
+  "treelib"
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/intel/sycl-tla"
-"Bug Tracker" = "https://github.com/intel/sycl-tla/issues"
+"Homepage" = "https://github.com/nvidia/cutlass"
+"Bug Tracker" = "https://github.com/nvidia/cutlass/issues"

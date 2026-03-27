@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -107,8 +107,6 @@ if (sys.version_info.major == 3 and sys.version_info.minor > 8) or sys.version_i
 else:
     this.use_rmm = False
 
-this._use_sycl = False
-
 
 def set_log_level(level: int):
     """
@@ -135,7 +133,7 @@ def get_option_registry():
         this._option_registry = OptionRegistry(device_cc())
     return this._option_registry
 
-this.__version__ = '4.2.1'
+this.__version__ = '4.4.2'
 
 from cutlass_cppgen.backend import create_memory_pool
 from cutlass_cppgen.emit.pytorch import pytorch
@@ -166,24 +164,21 @@ this._device_id = None
 this._nvcc_version = None
 
 def check_cuda_versions():
-    if not os.getenv("CUTLASS_USE_SYCL"):
-        # Strip any additional information from the CUDA version
-        _cuda_version = base_cuda.__version__.split("rc")[0]
-        # Check that Python CUDA version exceeds NVCC version
-        this._nvcc_version = nvcc_version()
-        _cuda_list = _cuda_version.split('.')
-        _nvcc_list = this._nvcc_version.split('.')
-        for val_cuda, val_nvcc in zip(_cuda_list, _nvcc_list):
-            if int(val_cuda) < int(val_nvcc):
-                raise Exception(f"Python CUDA version of {_cuda_version} must be greater than or equal to NVCC version of {this._nvcc_version}")
+    # Strip any additional information from the CUDA version
+    _cuda_version = base_cuda.__version__.split("rc")[0]
+    # Check that Python CUDA version exceeds NVCC version
+    this._nvcc_version = nvcc_version()
+    _cuda_list = _cuda_version.split('.')
+    _nvcc_list = this._nvcc_version.split('.')
+    for val_cuda, val_nvcc in zip(_cuda_list, _nvcc_list):
+        if int(val_cuda) < int(val_nvcc):
+            raise Exception(f"Python CUDA version of {_cuda_version} must be greater than or equal to NVCC version of {this._nvcc_version}")
 
-        if len(_nvcc_list) > len(_cuda_list):
-            if len(_nvcc_list) != len(_cuda_list) + 1:
-                raise Exception(f"Malformatted NVCC version of {this._nvcc_version}")
-            if _nvcc_list[:-1] == _cuda_list and int(_nvcc_list[-1]) != 0:
-                raise Exception(f"Python CUDA version of {_cuda_version} must be greater than or equal to NVCC version of {this._nvcc_version}")
-    else:
-        this._nvcc_version = "2025.0"
+    if len(_nvcc_list) > len(_cuda_list):
+        if len(_nvcc_list) != len(_cuda_list) + 1:
+            raise Exception(f"Malformatted NVCC version of {this._nvcc_version}")
+        if _nvcc_list[:-1] == _cuda_list and int(_nvcc_list[-1]) != 0:
+            raise Exception(f"Python CUDA version of {_cuda_version} must be greater than or equal to NVCC version of {this._nvcc_version}")
 
 def initialize_cuda_context():
     check_cuda_versions()
@@ -213,36 +208,6 @@ def initialize_cuda_context():
     this._device_id = int(device_id)
 
 
-dpctl = lazy_import("dpctl")
-
-this._sycl_device = None
-
-def initialize_sycl_context():
-    check_cuda_versions()
-    if this._device_id is not None and this._sycl_device is not None:
-        return
-
-    device_id = int(os.getenv("CUTLASS_SYCL_DEVICE_ID", default=0))
-    sycl_gpus = dpctl.get_devices(
-        dpctl.backend_type.level_zero, dpctl.device_type.gpu)
-
-    if len(sycl_gpus) <= device_id:
-        raise Exception("No LevelZero device found")
-
-    this._device_id = device_id
-    this._sycl_device = sycl_gpus[device_id]
-
-
 def device_id() -> int:
-    if os.getenv("CUTLASS_USE_SYCL"):
-        initialize_sycl_context()
-        this._use_sycl = True
-    else:
-        this._use_sycl = False
-        initialize_cuda_context()
+    initialize_cuda_context()
     return this._device_id
-
-
-def sycl_device():
-    initialize_sycl_context()
-    return this._sycl_device

@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * Copyright (C) 2025 Intel Corporation, All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -570,12 +570,18 @@ struct tuple_element<I, cute::ArithmeticTuple<T...>>
 namespace std
 {
 
-#if defined(__CUDACC_RTC__)
-template <class... _Tp>
-struct tuple_size;
+#if (__CUDACC_VER_MAJOR__ >= 13)
 
-template <size_t _Ip, class... _Tp>
-struct tuple_element;
+#include <cuda/std/__tuple_dir/structured_bindings.h>
+
+#else
+#if defined(__CUDACC_RTC__)
+  template <class... _Tp>
+  struct tuple_size;
+
+  template <size_t _Ip, class... _Tp>
+  struct tuple_element;
+#endif
 #endif
 
 template <class... T>

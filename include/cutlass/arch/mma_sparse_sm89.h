@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2024 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2024 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@
 
 #pragma once
 #include "cutlass/cutlass.h"
-#if !defined(CUTLASS_ENABLE_SYCL)
+#ifndef __QNX__
 #include CUDA_STD_HEADER(cassert)
 #endif
 

@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,23 +33,17 @@
 */
 
 #pragma once
-#ifdef CUTLASS_ENABLE_SYCL
-#include <cute/util/compat.hpp> 
-#else
+
 #include <cuda.h>
-#endif
+#include <cstdint>
 #include "cute/layout.hpp"
 #include "cute/tensor.hpp"
 #include "cute/arch/mma_sm90.hpp"
 #include "cutlass/cutlass.h"
 #include "cutlass/util/device_memory.h"
-#include "cutlass/gpu_generics.h"
-#ifdef CUTLASS_ENABLE_SYCL
-#include "cutlass/util/reference/device/sycl_tensor_fill.h"
-#else
 #include "cutlass/util/reference/device/tensor_fill.h"
-#endif
 #include "cute/util/type_traits.hpp"
+#include "cute/numeric/numeric_types.hpp"
 
 namespace cutlass {
 
@@ -71,15 +64,13 @@ template <
   class ElementScale,
   class ElementZero,
   class ScaleBroadCastLayout,
-  class ZeroBroadCastLayout,
   class ThrLayout>
-CUTLASS_GLOBAL void dequantize_kernel(DequantizedElement* dq_buffer,
+__global__ void dequantize_kernel(DequantizedElement* dq_buffer,
                                   QuantizedElement const* q_buffer,
                                   OperandLayout const operand_layout,
                                   ElementScale const* scale_buffer,
                                   ElementZero const* zero_buffer,
                                   ScaleBroadCastLayout const broadcasted_scale_layout,
-                                  ZeroBroadCastLayout const broadcasted_zero_layout,
                                   ThrLayout thr_layout) {
   using namespace cute;
 
@@ -90,11 +81,11 @@ CUTLASS_GLOBAL void dequantize_kernel(DequantizedElement* dq_buffer,
   // While the scales are expected to have shape [MN, G, L] but with a stride to allow broadcasting
   // It is expected that K % G == 0
   cute::Tensor gmem_scale_broadcasted = cute::make_tensor(make_gmem_ptr(scale_buffer), broadcasted_scale_layout);
-  cute::Tensor gmem_zero_broadcasted = cute::make_tensor(make_gmem_ptr(zero_buffer), broadcasted_zero_layout);
+  cute::Tensor gmem_zero_broadcasted = cute::make_tensor(make_gmem_ptr(zero_buffer), broadcasted_scale_layout);
 
   // Assign 1 thread per element in the thread block
   auto blk_shape = cute::make_shape(size<0>(thr_layout), _1{}, _1{}); //
-  auto blk_coord = cute::make_coord(_, BlockIdxX(), BlockIdxY());  // (MN, K, L)
+  auto blk_coord = cute::make_coord(_, blockIdx.x, blockIdx.y);  // (MN, K, L)
 
   // Tile across the block
   auto gOp_dq = cute::local_tile(gmem_op_dq, blk_shape, blk_coord);
@@ -102,25 +93,22 @@ CUTLASS_GLOBAL void dequantize_kernel(DequantizedElement* dq_buffer,
   auto gZero  = cute::local_tile(gmem_zero_broadcasted,  blk_shape, blk_coord);
   auto gOp_q  = cute::local_tile(gmem_op_q, blk_shape, blk_coord);
 
-  auto tOpDq_gOpDq = cute::local_partition(gOp_dq, thr_layout, ThreadIdxX());
-  auto tScale_gScale = cute::local_partition(gScale, thr_layout, ThreadIdxX());
-  auto tZero_gZero = cute::local_partition(gZero, thr_layout, ThreadIdxX());
-  auto tOpQ_gOpQ = cute::local_partition(gOp_q, thr_layout, ThreadIdxX());
+  auto tOpDq_gOpDq = cute::local_partition(gOp_dq, thr_layout, threadIdx.x);
+  auto tScale_gScale = cute::local_partition(gScale, thr_layout, threadIdx.x);
+  auto tZero_gZero = cute::local_partition(gZero, thr_layout, threadIdx.x);
+  auto tOpQ_gOpQ = cute::local_partition(gOp_q, thr_layout, threadIdx.x);
 
   // Make a fragment of registers to hold gmem loads
   cute::Tensor rmem_op_q = cute::make_fragment_like(tOpQ_gOpQ(_, _, _, 0));
   cute::Tensor rmem_scale = cute::make_fragment_like(tScale_gScale(_, _, _, 0));
   cute::Tensor rmem_zero = cute::make_fragment_like(tZero_gZero(_, _, _, 0));
   cute::Tensor rmem_op_dq = cute::make_fragment_like(tOpDq_gOpDq(_, _, _, 0));
-  cute::Tensor rmem_zero_buf = cute::make_fragment_like<ElementZero>(rmem_zero);
-  using zero_out_type = std::conditional_t<sizeof_bits_v<ElementZero> >= 8, ElementZero, int8_t>;
-  cute::Tensor rmem_zero_out = cute::make_fragment_like<zero_out_type>(rmem_zero);
-  cute::Tensor rmem_op_zero_out = cute::make_fragment_like<zero_out_type>(rmem_op_dq);
-  cute::Tensor rmem_op_scaled_out = cute::make_fragment_like<ElementScale>(rmem_op_dq);
+  cute::Tensor rmem_op_scaled = cute::make_fragment_like<ElementScale>(rmem_op_dq);
+  cute::Tensor rmem_zero_buf = cute::make_fragment_like<ElementScale>(rmem_zero);
 
   cute::Tensor pred_id = cute::make_identity_tensor(shape(operand_layout));
   auto pred_blk_tile = cute::local_tile(pred_id, blk_shape, blk_coord);
-  auto pred_thr_partition = cute::local_partition(pred_blk_tile, thr_layout, ThreadIdxX());
+  auto pred_thr_partition = cute::local_partition(pred_blk_tile, thr_layout, threadIdx.x);
 
   const auto num_iters = cute::size<3>(tOpDq_gOpDq);
 
@@ -130,20 +118,15 @@ CUTLASS_GLOBAL void dequantize_kernel(DequantizedElement* dq_buffer,
       cute::copy(tOpQ_gOpQ(_, _, _, ii), rmem_op_q);
       cute::copy(tScale_gScale(_, _, _, ii), rmem_scale);
       cute::copy(tZero_gZero(_, _, _, ii), rmem_zero);
-
-      cute::transform(rmem_op_q, rmem_op_zero_out, [] (const QuantizedElement& elt) { return zero_out_type(elt); } );
-      cute::transform(rmem_zero, rmem_zero_out, [] (const ElementZero& elt) { return zero_out_type(elt); } );
-
-      cute::transform(rmem_op_zero_out, rmem_zero_out, rmem_op_zero_out, cute::minus{});
-      cute::transform(rmem_op_zero_out, rmem_op_scaled_out, [] (const zero_out_type& elt) { return ElementScale(elt); } );
-      cute::transform(rmem_op_scaled_out, rmem_scale, rmem_op_scaled_out, cute::multiplies{});
-      cute::transform(rmem_op_scaled_out, rmem_op_dq, [] (const ElementScale& elt) { return DequantizedElement(elt); } );
+      cute::transform(rmem_op_q, rmem_op_scaled, [] (const QuantizedElement& elt) { return ElementScale(elt); } );
+      cute::transform(rmem_zero, rmem_zero_buf, [] (const ElementZero& elt) { return ElementScale(elt); } );
+      cute::transform(rmem_op_scaled, rmem_scale, rmem_op_scaled, cute::multiplies{});
+      cute::transform(rmem_op_scaled, rmem_zero_buf, rmem_op_scaled, cute::plus{});
+      cute::transform(rmem_op_scaled, rmem_op_dq, [] (const ElementScale& elt) { return DequantizedElement(elt); } );
       cute::copy(rmem_op_dq, tOpDq_gOpDq(_, _, _, ii));
     }
   }
 }
-
-template<class...> class dequantize_kernel_name;
 
 template <
   class QuantizedElement,
@@ -151,17 +134,15 @@ template <
   class OperandLayout,
   class ElementScale,
   class ElementZero,
-  class ScaleLayout,
-  class ZeroLayout>
+  class ScaleLayout>
 static void dequantize(DequantizedElement* dq_buffer,
                        QuantizedElement const* q_buffer,
                        OperandLayout const operand_layout,
                        ElementScale const* scale_buffer,
                        ElementZero const* zero_buffer,
                        ScaleLayout const scale_layout,
-                       ZeroLayout const zero_layout,
                        int const group_size,
-                       cudaStream_t stream = 0) {
+                       cudaStream_t &stream) {
   using namespace cute;
 
   constexpr int tpb = 128;
@@ -187,50 +168,87 @@ static void dequantize(DequantizedElement* dq_buffer,
   auto scale_stride_bcast = make_stride(scale_stride0, make_stride(0, scale_stride1), scale_stride2);
   auto scale_layout_bcast = make_layout(scale_shape_bcast, scale_stride_bcast);
 
-  const auto zero_stride0 = get<0>(stride(zero_layout));
-  const auto zero_stride1 = get<1>(stride(zero_layout));
-  const auto zero_stride2 = get<2>(stride(zero_layout));
-  auto zero_shape_bcast = make_shape(num_rows, make_shape(group_size, scale_k), batches);
-  auto zero_stride_bcast = make_stride(zero_stride0, make_stride(0, zero_stride1), zero_stride2);
-  auto zero_layout_bcast = make_layout(zero_shape_bcast, zero_stride_bcast);
   const auto blocks_x = gemm_k;
   const auto blocks_y = batches;
 
   dim3 blocks(blocks_x, blocks_y, 1);
-#ifdef CUTLASS_ENABLE_SYCL
-  compat::launch<dequantize_kernel<
-      QuantizedElement, DequantizedElement, OperandLayout, ElementScale,
-      ElementZero, decltype(scale_layout_bcast), decltype(zero_layout_bcast), decltype(thr_layout)>, 
-      dequantize_kernel_name<QuantizedElement, DequantizedElement, OperandLayout, ElementScale,
-      ElementZero, decltype(scale_layout_bcast), decltype(zero_layout_bcast), decltype(thr_layout)>>(
-      blocks, tpb, dq_buffer, q_buffer, operand_layout, scale_buffer,
-      zero_buffer, scale_layout_bcast, zero_layout_bcast, thr_layout);
-
-  compat::wait_and_throw();
-#else
   dequantize_kernel<<<blocks, tpb, 0, stream>>>(dq_buffer, q_buffer, operand_layout, scale_buffer, zero_buffer, scale_layout_bcast, thr_layout);
   CUDA_CHECK(cudaStreamSynchronize(stream));
-#endif
 }
 
-template <typename T>
+template <typename ElementScale, typename QuantType = cutlass::int4b_t>
 class packed_scale_t {
 public:
-  static_assert(cute::is_same_v<T, cutlass::int8_t> ||
-                cute::is_same_v<T, cutlass::uint8_t> ||
-                cute::is_same_v<T, cutlass::float_e4m3_t> ||
-                cute::is_same_v<T, cutlass::float_e5m2_t>,
-                "only 8 bit arithmetic types are supported.");
+  static_assert(
+    cute::sizeof_bits_v<ElementScale> == 8,
+    "ElementScale must be a supported 8-bit type.");
+  
   CUTLASS_HOST_DEVICE
-  explicit packed_scale_t(T val) {
-    if constexpr (!cute::is_unsigned_v<T>) {
-      // Only pack negative values. The positive values are generated in flight in the mainloop.
-      storage[0] = pack4(T(float(val) * -8.f), T(float(val) * -7.f), T(float(val) * -6.f), T(float(val) * -5.f));
-      storage[1] = pack4(T(float(val) * -4.f), T(float(val) * -3.f), T(float(val) * -2.f), -val);
-    }
-    else {
-      storage[0] = pack4(T(float(val) * 8.f), T(float(val) * 7.f), T(float(val) * 6.f), T(float(val) * 5.f));
-      storage[1] = pack4(T(float(val) * 4.f), T(float(val) * 3.f), T(float(val) * 2.f), val);
+  explicit packed_scale_t(ElementScale val) {
+
+    if constexpr (cutlass::platform::is_floating_point<QuantType>::value ||
+                  cute::is_same_v<QuantType, cutlass::float_e2m1_t>) {
+      // floating point QuantType needs to be converted to a signed type 
+      // or a floating point ttype 
+      static_assert(
+        !std::is_unsigned_v<ElementScale> ||
+        cutlass::platform::is_floating_point<ElementScale>::value ||
+        cute::is_same_v<ElementScale, cutlass::float_e4m3_t> ||
+        cute::is_same_v<ElementScale, cutlass::float_e5m2_t>,
+        "E2M1 quantization requires ElementScale to be signed or FP8");
+
+      // E2M1 quantization: Use E2M1 LUT values
+      storage[0] = pack4(
+        ElementScale(float(val) * 0.0f),     // E2M1: 0b000 => 0.0
+        ElementScale(float(val) * (-0.5f)),  // E2M1: 0b001 => -0.5
+        ElementScale(float(val) * (-1.0f)),  // E2M1: 0b010 => -1.0
+        ElementScale(float(val) * (-1.5f))   // E2M1: 0b011 => -1.5
+      );
+      storage[1] = pack4(
+        ElementScale(float(val) * (-2.0f)),  // E2M1: 0b100 => -2.0
+        ElementScale(float(val) * (-3.0f)),  // E2M1: 0b101 => -3.0
+        ElementScale(float(val) * (-4.0f)),  // E2M1: 0b110 => -4.0
+        ElementScale(float(val) * (-6.0f))   // E2M1: 0b111 => -6.0
+      );
+    } else if constexpr (!std::is_unsigned_v<ElementScale>) {
+      static_assert(
+        (std::is_integral_v<QuantType> && std::is_signed_v<QuantType>) ||
+        cute::is_same_v<QuantType, cutlass::int4b_t>,
+        "Two's complement LUT requires signed integer QuantType (int4b_t)");
+
+      // INT4 Two's Complement quantization: Use TC LUT values
+      storage[0] = pack4(
+        ElementScale(float(val) * (-8.0f)),  // TC: 0b000 => -8
+        ElementScale(float(val) * (-7.0f)),  // TC: 0b001 => -7
+        ElementScale(float(val) * (-6.0f)),  // TC: 0b010 => -6
+        ElementScale(float(val) * (-5.0f))   // TC: 0b011 => -5
+      );
+      storage[1] = pack4(
+        ElementScale(float(val) * (-4.0f)),  // TC: 0b100 => -4
+        ElementScale(float(val) * (-3.0f)),  // TC: 0b101 => -3
+        ElementScale(float(val) * (-2.0f)),  // TC: 0b110 => -2
+        ElementScale(float(val) * (-1.0f))   // TC: 0b111 => -1
+      );
+    } else {
+      // Unsigned ElementScale and QuantType: Pack positive LUT values (for UINT4)
+      static_assert(((std::is_integral_v<QuantType> && std::is_unsigned_v<QuantType>) ||
+                     cute::is_same_v<QuantType, cutlass::uint4b_t>) &&
+                    std::is_unsigned_v<ElementScale>,
+                    "Uint4 LUT requires unsigned QuantType (uint4b_t) and ElementScale");
+
+      // UINT4 LUT: pack positive LUT values
+      storage[0] = pack4(
+        ElementScale(float(val) * 8.0f), 
+        ElementScale(float(val) * 7.0f), 
+        ElementScale(float(val) * 6.0f), 
+        ElementScale(float(val) * 5.0f)
+      );
+      storage[1] = pack4(
+        ElementScale(float(val) * 4.0f), 
+        ElementScale(float(val) * 3.0f), 
+        ElementScale(float(val) * 2.0f), 
+        ElementScale(float(val) * 1.0f)
+      );
     }
   }
   CUTLASS_HOST_DEVICE
@@ -271,7 +289,7 @@ private:
   Storage storage[2] {};
 
   CUTLASS_HOST_DEVICE
-  static Storage pack4(T c1, T c2, T c3, T c4) {
+  static Storage pack4(ElementScale c1, ElementScale c2, ElementScale c3, ElementScale c4) {
     Storage result = 0;
     result |= (static_cast<Storage>(reinterpret_cast<Stage const&>(c4)) << 24);
     result |= (static_cast<Storage>(reinterpret_cast<Stage const&>(c3)) << 16);
@@ -280,25 +298,25 @@ private:
     return result;
   }
   CUTLASS_HOST_DEVICE
-  T get() const {
+  ElementScale get() const {
     auto stage = static_cast<Stage>(storage[0] >> 8);
     #if defined(__CUDA_ARCH__)
-    return reinterpret_cast<T const&>(stage);
+    return reinterpret_cast<ElementScale const&>(stage);
     #else
-    T tmp;
+    ElementScale tmp;
     std::memcpy(&tmp, &stage, sizeof(Stage));
     return tmp;
     #endif
   }
   CUTLASS_HOST_DEVICE
-  T get(int idx) const {
+  ElementScale get(int idx) const {
     Stage stage;
     if (idx < 4) stage = static_cast<Stage>(storage[0] >> (8 * idx));
     else         stage = static_cast<Stage>(storage[1] >> (8 * idx - 32));
     #if defined(__CUDA_ARCH__)
-    return reinterpret_cast<T const&>(stage);
+    return reinterpret_cast<ElementScale const&>(stage);
     #else
-    T tmp;
+    ElementScale tmp;
     std::memcpy(&tmp, &stage, sizeof(Stage));
     return tmp;
     #endif
@@ -342,7 +360,7 @@ static bool unified_encode_int4b(cutlass::int4b_t const *block_in, cutlass::int4
   return true;
 }
 
-template <class ElementScale>
+template <class ElementScale, typename QuantType = cutlass::int4b_t>
 static bool pack_scale_fp8(ElementScale const *block_in, cutlass::Array<ElementScale, 8> *block_out, const size_t block_size) {
   std::vector<ElementScale> data_in(block_size);
   std::vector<cutlass::Array<ElementScale, 8>> data_out(block_size);
@@ -356,7 +374,7 @@ static bool pack_scale_fp8(ElementScale const *block_in, cutlass::Array<ElementS
   }
 
   for (size_t i = 0; i < block_size; i++) {
-    cutlass::packed_scale_t<ElementScale> tmp(data_in[i]);
+    cutlass::packed_scale_t<ElementScale, QuantType> tmp(data_in[i]);
     data_out[i] = reinterpret_cast<cutlass::Array<ElementScale, 8> const&>(tmp);
   }
 
@@ -425,7 +443,7 @@ constexpr auto compute_memory_reordering_atom(AtomLayout atom_layout = {}, ValLa
 }
 
 template <class TileShape, class EngineSrc, class LayoutSrc, class EngineDst, class LayoutDst, class TiledCopy>
-CUTLASS_GLOBAL void reorder_tensor_kernel(
+__global__ void reorder_tensor_kernel(
   cute::Tensor<EngineSrc, LayoutSrc> S,
   cute::Tensor<EngineDst, LayoutDst> D,
   TiledCopy tiled_copy)
@@ -434,10 +452,10 @@ CUTLASS_GLOBAL void reorder_tensor_kernel(
 
   using T = typename EngineDst::value_type;
 
-  Tensor gS = local_tile(S, TileShape{}, make_coord(BlockIdxX(), _, BlockIdxZ()));
-  Tensor gD = local_tile(D, TileShape{}, make_coord(BlockIdxX(), _, BlockIdxZ()));
+  Tensor gS = local_tile(S, TileShape{}, make_coord(blockIdx.x, _, blockIdx.z));
+  Tensor gD = local_tile(D, TileShape{}, make_coord(blockIdx.x, _, blockIdx.z));
 
-  auto thread_copy = tiled_copy.get_slice(ThreadIdxX());
+  auto thread_copy = tiled_copy.get_slice(threadIdx.x);
   Tensor tS = thread_copy.partition_S(gS);
   Tensor tD = thread_copy.partition_D(gD);
 
@@ -476,12 +494,8 @@ void reorder_tensor(
   auto tiled_D = group_modes<3,rank_v<LayoutDst>>(tiled_divide(D, TileShape{}));
   dim3 blocks{unsigned(size<1>(tiled_D)), 1u, unsigned(size<3>(tiled_D))};
 
-#ifndef CUTLASS_ENABLE_SYCL
   reorder_tensor_kernel<TileShape><<<blocks, NumThreads>>>(S, D, tiled_copy);
   CUDA_CHECK(cudaDeviceSynchronize());
-#else
-  CUTE_INVALID_CONTROL_PATH("Unimplemented/untested code path");
-#endif
 }
 
 // In-place version

@@ -1,7 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
- *
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -148,39 +146,6 @@ template <> struct ArchMap<arch::Sm103, arch::OpClassTensorOp> {
 template <typename OperatorClass> struct ArchMap<arch::Sm120, OperatorClass> {
   static int const kMin = 120;
   static int const kMax = 121;
-};
-
-// Intel Xe architecture mappings
-template <typename OperatorClass> struct ArchMap<arch::IntelXe, OperatorClass> {
-  static int const kMin = 12;
-  static int const kMax = 50;
-};
-
-template <> struct ArchMap<arch::IntelXe, arch::OpClassTensorOp> {
-  static int const kMin = 12;
-  static int const kMax = 50;
-};
-
-// Xe12 (PVC) alias
-template <typename OperatorClass> struct ArchMap<arch::Xe12, OperatorClass> {
-  static int const kMin = 12;
-  static int const kMax = 50;
-};
-
-template <> struct ArchMap<arch::Xe12, arch::OpClassTensorOp> {
-  static int const kMin = 12;
-  static int const kMax = 50;
-};
-
-// Xe20 (BMG) alias
-template <typename OperatorClass> struct ArchMap<arch::Xe20, OperatorClass> {
-  static int const kMin = 20;
-  static int const kMax = 50;
-};
-
-template <> struct ArchMap<arch::Xe20, arch::OpClassTensorOp> {
-  static int const kMin = 20;
-  static int const kMax = 50;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

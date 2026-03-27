@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -104,8 +104,8 @@ class PassDAG2Tree(EVTPassBase):
                     raise RuntimeError(f"No output node with out degree = 0 found.")
                 
                 output_node = None
-                if (self.dag_ir.cc >= 90 or self.dag_ir.cc in [12, 20]):
-                    # For SM90+ and [Xe12, Xe20], the lca should be the input node of D
+                if (self.dag_ir.cc >= 90):
+                    # For SM90+, the lca should be the input node of D
                     if (not self.dag_ir.has_node("D")):
                         raise RuntimeError(f"D is not a node in the DAG IR.")
                     output_node = "D"

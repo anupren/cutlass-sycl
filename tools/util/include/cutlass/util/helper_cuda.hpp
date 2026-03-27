@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,9 +31,7 @@
 
 #pragma once
 
-#if !defined(CUTLASS_ENABLE_SYCL)
 #include <cuda.h>
-#endif
 
 #include <cute/util/debug.hpp>
 
@@ -44,22 +41,6 @@ namespace cute
 void
 device_init(int device_id, bool quiet = false)
 {
-
-#if defined(CUTLASS_ENABLE_SYCL)
-
-  compat::select_device(device_id);
-  auto &device = compat::get_current_device();
-  
-  if (!quiet) {
-    printf("Using device %d: %s  (%d Compute Units)\n",
-           device_id, device.get_device_info().get_name(),
-           device.get_max_compute_units()
-           );
-    fflush(stdout);
-  }
-
-#else  
-
   cudaDeviceProp device_prop;
   std::size_t    device_free_physmem;
   std::size_t    device_total_physmem;
@@ -82,9 +63,6 @@ device_init(int device_id, bool quiet = false)
            device_prop.multiProcessorCount);
     fflush(stdout);
   }
-
-#endif
-
 }
 
 /**

@@ -1,7 +1,6 @@
 
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,12 +39,15 @@
 #include <vector>
 #include <numeric>
 
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+
 #include <cute/tensor.hpp>
 
 using namespace cute;
 
 template <class GmemTensor, class RmemTiler, class CopyPolicy>
-CUTLASS_GLOBAL
+__global__
 void
 kernel(GmemTensor gC, RmemTiler tiler, CopyPolicy policy)
 {
@@ -72,23 +74,17 @@ template <class T, class CopyPolicy, class GmemLayout, class RmemTiler>
 void
 test_copy_vectorization(CopyPolicy policy, GmemLayout gmem_layout, RmemTiler rmem_tiler)
 {
-  host_vector<T> h_in(cosize(gmem_layout), T(0));
+  thrust::host_vector<T> h_in(cosize(gmem_layout), T(0));
 
-  device_vector<T> d_in = h_in;
+  thrust::device_vector<T> d_in = h_in;
   Tensor m_in = make_tensor(make_gmem_ptr(raw_pointer_cast(d_in.data())), gmem_layout);
-  #if defined(CUTLASS_ENABLE_SYCL)
-  compat::launch<kernel<decltype(m_in),decltype(rmem_tiler),  decltype(policy)>>(
-    compat::dim3(1), compat::dim3(1),
-    m_in, rmem_tiler, policy
-  );
-  #else
-  kernel<<<1,1>>>(m_in, rmem_tiler, policy);
-  #endif
 
-  host_vector<T> h_out = d_in;
+  kernel<<<1,1>>>(m_in, rmem_tiler, policy);
+
+  thrust::host_vector<T> h_out = d_in;
   Tensor result = make_tensor(h_out.data(), gmem_layout);
 
-  host_vector<T> h_true = h_in;
+  thrust::host_vector<T> h_true = h_in;
   Tensor ref = make_tensor(h_true.data(), gmem_layout);
 
   // Set the values directly in the reference tensor, no copy

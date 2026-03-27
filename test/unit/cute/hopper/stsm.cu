@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,47 +33,36 @@
 
 #include <iostream>
 
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+
 #include <cute/tensor.hpp>
 #include <cute/arch/copy_sm90.hpp>
-
-#if defined(CUTLASS_ENABLE_SYCL)
-namespace sc = compat;
-namespace sc_exp = compat::experimental;
-namespace sycl_ext = sycl::ext::oneapi::experimental;
-#endif
 
 using namespace cute;
 
 template<class T>
-CUTLASS_GLOBAL void
+__global__ void
 stsm_test_device(uint16_t* g_in, uint16_t* g_out)
 {
   constexpr int count = sizeof(T) / 4;
-  int tid = ThreadIdxX();
-  int stride = BlockDimX();
+  int tid = threadIdx.x;
+  int stride = blockDim.x;
 
   // load input gmem -> rmem
   uint32_t reg[count];
   for (int i = 0; i < (sizeof(T) / 4); i++) {
     reg[i] = reinterpret_cast<uint32_t*>(g_in)[tid + (stride * i)];
   }
-  
-  #if defined(__SYCL_DEVICE_ONLY__)
-    auto smem = sycl_ext::get_dynamic_work_group_memory<uint32_t>().get();
-  #endif
-  #if defined(CUTLASS_ENABLE_SYCL) && !defined(__SYCL_DEVICE_ONLY__)
-    uint32_t* smem; // dummy declaration to avoid compilation errors during the host compilation phase
-  #endif
-  #if !defined(CUTLASS_ENABLE_SYCL)
-    CUTLASS_SHARED uint32_t smem[32 * count];
-  #endif
+
+  __shared__ uint32_t smem[32 * count];
 
   // load rmem -> smem using STSM
   uint128_t* smem_ptr = reinterpret_cast<uint128_t*>(smem) + tid;
   T*         rmem_ptr = reinterpret_cast<T*>(reg);
   cute::copy_stsm(rmem_ptr, smem_ptr);
 
-  syncthreads();
+  __syncthreads();
 
   // store output smem -> gmem
   for (int i = 0; i < (sizeof(T) / 4); i++) {
@@ -83,27 +71,19 @@ stsm_test_device(uint16_t* g_in, uint16_t* g_out)
 }
 
 template <class TiledCopy, class SmemLayout>
-CUTLASS_GLOBAL void
+__global__ void
 stsm_test_device_cute(uint16_t* g_in, uint16_t* g_out,
                       TiledCopy tiled_copy, SmemLayout smem_layout)
 {
   using namespace cute;
 
-  #if defined(__SYCL_DEVICE_ONLY__)
-    auto smem = sycl_ext::get_dynamic_work_group_memory<uint16_t>().get();
-  #endif
-  #if defined(CUTLASS_ENABLE_SYCL) && !defined(__SYCL_DEVICE_ONLY__)
-    char* smem_buf; // dummy declaration to avoid compilation errors during the host compilation phase
-  #endif
-  #if !defined(CUTLASS_ENABLE_SYCL)
-    CUTLASS_SHARED uint16_t smem[size(smem_layout)];
-  #endif
+  __shared__ uint16_t smem[size(smem_layout)];
 
   Tensor t_g_in  = make_tensor(make_gmem_ptr(g_in),  smem_layout);
   Tensor t_g_out = make_tensor(make_gmem_ptr(g_out), smem_layout);
   Tensor t_smem  = make_tensor(make_smem_ptr(smem),  smem_layout);
 
-  int tid = ThreadIdxX();
+  int tid = threadIdx.x;
 
   auto thr_copy = tiled_copy.get_thread_slice(tid);
 
@@ -138,30 +118,22 @@ TEST(SM90_CuTe_Hopper, Stsm)
 {
   constexpr int count = 1024;
 
-  host_vector<uint16_t> h_in(count);
+  thrust::host_vector<uint16_t> h_in(count);
   for (int i = 0; i < count; ++i) {
     h_in[i] = uint16_t(i);
   }
-  device_vector<uint16_t> d_in = h_in;
+  thrust::device_vector<uint16_t> d_in = h_in;
 
   //
   // STSM 1x (32b)
   //
 
   {
-  device_vector<uint16_t> d_out(count);
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device<uint32_t>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(32), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(sizeof(uint32_t) / 4 * 32)}},
-    d_in.data(), d_out.data());
-  sc::wait_and_throw();
-  #else
+  thrust::device_vector<uint16_t> d_out(count);
   stsm_test_device<uint32_t><<<1, 32>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()));
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < 32; ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -174,19 +146,11 @@ TEST(SM90_CuTe_Hopper, Stsm)
   //
 
   {
-  device_vector<uint16_t> d_out(count);
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device<uint64_t>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(32), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(sizeof(uint64_t) / 4 * 32)}},
-    d_in.data(), d_out.data());
-  sc::wait_and_throw();
-  #else
+  thrust::device_vector<uint16_t> d_out(count);
   stsm_test_device<uint64_t><<<1, 32>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()));
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < 64; ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -199,19 +163,11 @@ TEST(SM90_CuTe_Hopper, Stsm)
   //
 
   {
-  device_vector<uint16_t> d_out(count);
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device<uint128_t>>
-  ( sc_exp::launch_policy{sc::dim3(1), sc::dim3(32), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(sizeof(uint128_t) / 4 * 32)}},
-    d_in.data(), d_out.data());
-  sc::wait_and_throw();
-  #else
+  thrust::device_vector<uint16_t> d_out(count);
   stsm_test_device<uint128_t><<<1, 32>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()));
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < 128; ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -224,27 +180,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   //
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,Shape <_2, _4>>,
                             Stride< _2,Stride<_1,_64>>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<SM90_U32x1_STSM_N, uint16_t>{},
                                     Layout<Shape<_32,_1>>{},
                                     Layout<Shape< _1,_8>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -253,7 +202,7 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,Shape <_2, _4>>,
                             Stride< _2,Stride<_1,_64>>>{};
@@ -261,20 +210,12 @@ TEST(SM90_CuTe_Hopper, Stsm)
                                     Layout<Shape<_32,_1>>{},
                                     Layout<Shape< _1,_8>>{});
 
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -283,27 +224,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,Shape <_2, _4>>,
                             Stride< _2,Stride<_1,_64>>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<SM90_U32x4_STSM_N, uint16_t>{},
                                     Layout<Shape<_32,_1>>{},
                                     Layout<Shape< _1,_8>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -312,7 +246,7 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,Shape <_2, _4>>,
                             Stride< _2,Stride<_1,_64>>>{};
@@ -320,20 +254,12 @@ TEST(SM90_CuTe_Hopper, Stsm)
                                     Layout<Shape<_32,_1>>{},
                                     Layout<Shape< _1,_8>>{});
 
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -342,27 +268,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,_32>,
                             Stride< _1,_32>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<SM90_U32x1_STSM_N, uint16_t>{},
                                     Layout<Shape<_16,_2>>{},
                                     Layout<Shape< _2,_4>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -371,27 +290,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,_32>,
                             Stride< _1,_32>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<SM90_U32x2_STSM_N, uint16_t>{},
                                     Layout<Shape<_16,_2>>{},
                                     Layout<Shape< _2,_4>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -400,27 +312,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,_32>,
                             Stride< _1,_32>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<SM90_U32x4_STSM_N, uint16_t>{},
                                     Layout<Shape<_16,_2>>{},
                                     Layout<Shape< _2,_4>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -429,27 +334,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,_32>,
                             Stride< _1,_32>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<UniversalCopy<uint16_t>, uint16_t>{},
                                     Layout<Shape<_16,_2>>{},
                                     Layout<Shape< _2,_4>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -458,27 +356,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,_32>,
                             Stride<_32, _1>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<SM90_U16x2_STSM_T, uint16_t>{},
                                     Layout<Shape<_4,_8>>{},
                                     Layout<Shape<_2,_1>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -487,27 +378,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,_32>,
                             Stride<_32, _1>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<SM90_U16x4_STSM_T, uint16_t>{},
                                     Layout<Shape<_4,_8>>{},
                                     Layout<Shape<_4,_1>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
@@ -516,27 +400,20 @@ TEST(SM90_CuTe_Hopper, Stsm)
   }
 
   {
-  device_vector<uint16_t> d_out(count);
+  thrust::device_vector<uint16_t> d_out(count);
 
   auto smem_layout = Layout<Shape <_32,_32>,
                             Stride<_32, _1>>{};
   auto tiled_copy = make_tiled_copy(Copy_Atom<SM90_U16x8_STSM_T, uint16_t>{},
                                     Layout<Shape<_4,_8>>{},
                                     Layout<Shape<_8,_1>>{});
-  #if defined(CUTLASS_ENABLE_SYCL)
-  sc_exp::launch<stsm_test_device_cute<decltype(tiled_copy), decltype(smem_layout)>>
-  ( sc::launch_policy{sc::dim3(1), sc::dim3(int(size(tiled_copy))), 
-    sc_exp::launch_properties{sycl_ext::work_group_static_size(size(smem_layout))}},
-    d_in.data(), d_out.data(), tiled_copy, smem_layout);
-  sc::wait_and_throw();
-  #else
+
   stsm_test_device_cute<<<1, int(size(tiled_copy))>>>(
     thrust::raw_pointer_cast(d_in.data()),
     thrust::raw_pointer_cast(d_out.data()),
     tiled_copy,
     smem_layout);
-  #endif
-  host_vector<uint16_t> h_out = d_out;
+  thrust::host_vector<uint16_t> h_out = d_out;
   for (int i = 0; i < size(smem_layout); ++i) {
     //printf("%d  %d\n", int(h_in[i]), int(h_out[i]));
     EXPECT_EQ(h_out[i], h_in[i]);
