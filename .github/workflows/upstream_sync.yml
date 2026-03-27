@@ -146,7 +146,7 @@ jobs:
             if [ "${SYNC_PROVIDER}" = "anthropic" ]; then
               RESOLVED_MODEL="claude-opus-4-6"
             else
-              RESOLVED_MODEL="us.anthropic.claude-opus-4-6"
+              RESOLVED_MODEL="us.anthropic.claude-opus-4-1-20250805-v1:0"
             fi
           fi
 
