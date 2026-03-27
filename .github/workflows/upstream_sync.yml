@@ -29,7 +29,7 @@ on:
       claude_model:
         description: Claude model to use for conflict resolution
         required: false
-        default: ""
+        default: claude-opus-4-6
         type: string
       max_turns:
         description: Maximum Claude turns for this sync run
@@ -64,7 +64,7 @@ jobs:
       SYNC_PROVIDER: ${{ inputs.provider || 'bedrock' }}
       SYNC_UPSTREAM_BRANCH: ${{ inputs.upstream_branch || 'main' }}
       SYNC_BASE_BRANCH: ${{ inputs.base_branch || github.base_ref || 'main' }}
-      SYNC_CLAUDE_MODEL: ${{ inputs.claude_model || '' }}
+      SYNC_CLAUDE_MODEL: ${{ inputs.claude_model || 'claude-opus-4-6' }}
       SYNC_MAX_TURNS: ${{ inputs.max_turns || '20' }}
       SYNC_AWS_REGION: ${{ inputs.aws_region || 'us-east-2' }}
 
@@ -145,13 +145,17 @@ jobs:
             if [ "${SYNC_PROVIDER}" = "anthropic" ]; then
               RESOLVED_MODEL="claude-opus-4-6"
             else
-              RESOLVED_MODEL="anthropic.claude-3-7-sonnet-20250219-v1:0"
+              RESOLVED_MODEL="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
             fi
           fi
 
           # Bedrock commonly expects regional inference profile IDs (us./eu./apac.).
           # If the caller passes a raw anthropic model ID, default to us.* for compatibility.
           if [ "${SYNC_PROVIDER}" = "bedrock" ]; then
+            if [ "${RESOLVED_MODEL}" = "claude-opus-4-6" ]; then
+              RESOLVED_MODEL="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+              echo "::notice::claude-opus-4-6 is not a Bedrock model id. Falling back to '${RESOLVED_MODEL}' for Bedrock."
+            fi
             if [[ "${RESOLVED_MODEL}" != us.* && "${RESOLVED_MODEL}" != eu.* && "${RESOLVED_MODEL}" != apac.* ]]; then
               RESOLVED_MODEL="us.${RESOLVED_MODEL}"
               echo "::notice::Normalized Bedrock model id to '${RESOLVED_MODEL}'. Override claude_model input if needed."
