@@ -29,7 +29,7 @@ on:
       claude_model:
         description: Claude model to use for conflict resolution
         required: false
-        default: claude-opus-4-6
+        default: us.anthropic.claude-opus-4-1-20250805-v1:0
         type: string
       max_turns:
         description: Maximum Claude turns for this sync run
@@ -64,7 +64,7 @@ jobs:
       SYNC_PROVIDER: ${{ inputs.provider || 'bedrock' }}
       SYNC_UPSTREAM_BRANCH: ${{ inputs.upstream_branch || 'main' }}
       SYNC_BASE_BRANCH: ${{ inputs.base_branch || github.base_ref || 'main' }}
-      SYNC_CLAUDE_MODEL: ${{ inputs.claude_model || 'claude-opus-4-6' }}
+      SYNC_CLAUDE_MODEL: ${{ inputs.claude_model || 'us.anthropic.claude-opus-4-1-20250805-v1:0' }}
       SYNC_MAX_TURNS: ${{ inputs.max_turns || '20' }}
       SYNC_AWS_REGION: ${{ inputs.aws_region || 'us-east-2' }}
 
@@ -141,26 +141,28 @@ jobs:
 
           RESOLVED_MODEL="${SYNC_CLAUDE_MODEL}"
 
-          # Always use Claude Opus.
-          if [ -z "${RESOLVED_MODEL}" ]; then
-            if [ "${SYNC_PROVIDER}" = "anthropic" ]; then
-              RESOLVED_MODEL="claude-opus-4-6"
-            else
-              RESOLVED_MODEL="us.anthropic.claude-opus-4-1-20250805-v1:0"
+          if [ "${SYNC_PROVIDER}" = "anthropic" ]; then
+            # Strip regional prefix for Anthropic API.
+            if [[ "${RESOLVED_MODEL}" == us.anthropic.* ]]; then
+              RESOLVED_MODEL="${RESOLVED_MODEL#us.anthropic.}"
+              echo "::notice::Stripped Bedrock prefix for Anthropic: '${RESOLVED_MODEL}'."
+            elif [[ "${RESOLVED_MODEL}" == eu.anthropic.* ]]; then
+              RESOLVED_MODEL="${RESOLVED_MODEL#eu.anthropic.}"
+              echo "::notice::Stripped Bedrock prefix for Anthropic: '${RESOLVED_MODEL}'."
+            elif [[ "${RESOLVED_MODEL}" == apac.anthropic.* ]]; then
+              RESOLVED_MODEL="${RESOLVED_MODEL#apac.anthropic.}"
+              echo "::notice::Stripped Bedrock prefix for Anthropic: '${RESOLVED_MODEL}'."
             fi
-          fi
-
-          # Normalize model id to provider-compatible format for Bedrock.
-          if [ "${SYNC_PROVIDER}" = "bedrock" ]; then
+          elif [ "${SYNC_PROVIDER}" = "bedrock" ]; then
             # Bedrock requires an inference profile id (regional prefix) or a profile ARN.
             if [[ "${RESOLVED_MODEL}" == arn:aws:bedrock:* ]]; then
               echo "::notice::Using Bedrock inference profile ARN for model selection."
             elif [[ "${RESOLVED_MODEL}" == anthropic.* ]]; then
               RESOLVED_MODEL="us.${RESOLVED_MODEL}"
-              echo "::notice::Converted Bedrock model to inference profile id '${RESOLVED_MODEL}'."
+              echo "::notice::Converted to Bedrock inference profile id '${RESOLVED_MODEL}'."
             elif [[ "${RESOLVED_MODEL}" != us.* && "${RESOLVED_MODEL}" != eu.* && "${RESOLVED_MODEL}" != apac.* ]]; then
               RESOLVED_MODEL="us.anthropic.${RESOLVED_MODEL}"
-              echo "::notice::Normalized Bedrock model id to '${RESOLVED_MODEL}'."
+              echo "::notice::Normalized to Bedrock inference profile id '${RESOLVED_MODEL}'."
             fi
           fi
 
