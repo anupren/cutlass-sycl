@@ -146,23 +146,29 @@ jobs:
             if [ "${SYNC_PROVIDER}" = "anthropic" ]; then
               RESOLVED_MODEL="claude-opus-4-6"
             else
-              RESOLVED_MODEL="anthropic.claude-3-7-sonnet-20250219-v1:0"
+              RESOLVED_MODEL="us.anthropic.claude-3-7-sonnet-20250219-v1:0"
             fi
           fi
 
           # Normalize model ids to provider-compatible formats and set a fallback model.
           if [ "${SYNC_PROVIDER}" = "bedrock" ]; then
             if [ "${RESOLVED_MODEL}" = "claude-opus-4-6" ]; then
-              RESOLVED_MODEL="anthropic.claude-3-7-sonnet-20250219-v1:0"
+              RESOLVED_MODEL="us.anthropic.claude-3-7-sonnet-20250219-v1:0"
               echo "::notice::claude-opus-4-6 is not a Bedrock model id. Falling back to '${RESOLVED_MODEL}' for Bedrock."
             fi
 
-            if [[ "${RESOLVED_MODEL}" != anthropic.* && "${RESOLVED_MODEL}" != us.* && "${RESOLVED_MODEL}" != eu.* && "${RESOLVED_MODEL}" != apac.* ]]; then
-              RESOLVED_MODEL="anthropic.${RESOLVED_MODEL}"
+            # Bedrock requires an inference profile id (regional prefix) or a profile ARN.
+            if [[ "${RESOLVED_MODEL}" == arn:aws:bedrock:* ]]; then
+              echo "::notice::Using Bedrock inference profile ARN for model selection."
+            elif [[ "${RESOLVED_MODEL}" == anthropic.* ]]; then
+              RESOLVED_MODEL="us.${RESOLVED_MODEL}"
+              echo "::notice::Converted Bedrock model to inference profile id '${RESOLVED_MODEL}'."
+            elif [[ "${RESOLVED_MODEL}" != us.* && "${RESOLVED_MODEL}" != eu.* && "${RESOLVED_MODEL}" != apac.* ]]; then
+              RESOLVED_MODEL="us.anthropic.${RESOLVED_MODEL}"
               echo "::notice::Normalized Bedrock model id to '${RESOLVED_MODEL}'. Override claude_model input if needed."
             fi
 
-            FALLBACK_MODEL="anthropic.claude-3-5-sonnet-20241022-v2:0"
+            FALLBACK_MODEL="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
           else
             FALLBACK_MODEL="claude-sonnet-4-5"
           fi
@@ -173,7 +179,7 @@ jobs:
           echo "Fallback model: ${FALLBACK_MODEL}"
 
       - name: Run Claude Code upstream sync resolution
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@d77b50d2b0808657f8e6774085c8bf54484351c
         env:
           CLAUDE_CODE_USE_BEDROCK: ${{ (inputs.provider || 'bedrock') == 'bedrock' && '1' || '0' }}
           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1'
