@@ -219,6 +219,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Filter out workflow file changes to avoid permission issues
+          # GITHUB_TOKEN cannot push to .github/workflows/ without elevated permissions
+          echo "::notice::Filtering workflow files from sync results..."
+          git checkout HEAD -- .github/workflows/ 2>/dev/null || true
+
           if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
             echo "::error::Sync left unresolved merge conflicts"
             git diff --name-only --diff-filter=U
