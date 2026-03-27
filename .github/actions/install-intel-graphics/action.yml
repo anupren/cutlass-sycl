@@ -15,9 +15,12 @@ runs:
       if: inputs.IGC == 'ROLLING'
       shell: bash
       run: |
+        set -x
         shopt -s expand_aliases
         which sudo || alias sudo=""
+        echo "GPU: ${{ inputs.GPU }}, IGC: ${{ inputs.IGC }}"
         if [[ "${{ inputs.GPU }}" == "BMG" ]] || [[ "${{ inputs.GPU }}" == "PVC" ]]; then
+          echo "Installing Intel graphics drivers for ${{ inputs.GPU }}..."
           #purge existing intel graphics packages
           dpkg -l | grep -E 'libigc|libigsc0|intel-igc|libigdgmm|libigdfcl|libze-intel-gpu|libze1|libze-dev|intel-opencl-icd|intel-metrics-discovery|intel-gsc|intel-ocloc' | awk '{print $2}' | xargs -r sudo apt-get purge -y || true
           sudo rm -f /etc/apt/sources.list.d/kobuk-team-ubuntu-intel-graphics-*
@@ -27,16 +30,21 @@ runs:
           sudo apt-get install --reinstall -y libze-intel-gpu1 libze-dev intel-metrics-discovery \
             intel-opencl-icd ocl-icd-opencl-dev clinfo intel-gsc intel-ocloc g++
           dpkg -l | grep libhwloc15 > /dev/null || sudo apt install -y libhwloc15
+          echo "Completed: Intel graphics drivers installed for ROLLING"
         else
+          echo "ERROR: GPU type ${{ inputs.GPU }} not supported (must be BMG or PVC)"
           exit 1
         fi
     - name: Install Intel graphics drivers
       if: inputs.IGC == 'STAGING'
       shell: bash
       run: |
+        set -x
         shopt -s expand_aliases
         which sudo || alias sudo=""
+        echo "GPU: ${{ inputs.GPU }}, IGC: ${{ inputs.IGC }}"
         if [[ "${{ inputs.GPU }}" == "BMG" ]] || [[ "${{ inputs.GPU }}" == "PVC" ]]; then
+          echo "Installing Intel graphics drivers for ${{ inputs.GPU }}..."
           #purge existing intel graphics packages
           dpkg -l | grep -E 'libigc|libigsc0|intel-igc|libigdgmm|libigdfcl|libze-intel-gpu|libze1|libze-dev|intel-opencl-icd|intel-metrics-discovery|intel-gsc|intel-ocloc' | awk '{print $2}' | xargs -r sudo apt-get purge -y || true
           sudo rm -f /etc/apt/sources.list.d/kobuk-team-ubuntu-intel-graphics-*
@@ -46,18 +54,22 @@ runs:
           sudo apt-get install --reinstall -y libze-intel-gpu1 libze-dev intel-metrics-discovery \
             intel-opencl-icd ocl-icd-opencl-dev clinfo intel-gsc intel-ocloc g++
           dpkg -l | grep libhwloc15 > /dev/null || sudo apt install -y libhwloc15
+          echo "Completed: Intel graphics drivers installed for STAGING"
         else
+          echo "ERROR: GPU type ${{ inputs.GPU }} not supported (must be BMG or PVC)"
           exit 1
         fi
     - name: Install Intel graphics drivers
       if: inputs.IGC == 'LTS'
       shell: bash
       run: |
+        set -x
         export no_proxy="127.0.0.1,localhost,apt.repos.intel.com,mlpc.intel.com,*.intel.com"
- 
         shopt -s expand_aliases
-        which sudo || alias sudo=""        
+        which sudo || alias sudo=""
+        echo "GPU: ${{ inputs.GPU }}, IGC: ${{ inputs.IGC }}"
         if [[ "${{ inputs.GPU }}" == "PVC" ]]; then
+          echo "Installing Intel graphics drivers for PVC (LTS)..."
           # Purge existing intel graphics packages
           dpkg -l | grep -E 'libigc|libigsc0|intel-igc|libigdgmm|libigdfcl|libze-intel-gpu|libze1|libze-dev|intel-opencl-icd|intel-metrics-discovery|intel-gsc|intel-ocloc' | awk '{print $2}' | xargs -r sudo apt-get purge -y || true
           sudo rm -f /etc/apt/sources.list.d/kobuk-team-ubuntu-intel-graphics-*
@@ -78,11 +90,13 @@ runs:
             intel-opencl-icd ocl-icd-opencl-dev clinfo intel-gsc intel-ocloc g++
           dpkg -l | grep libhwloc15 > /dev/null || sudo apt install -y libhwloc15
 
-        #Install Latest IGC
-        sudo rm -f /etc/apt/sources.list.d/intel-gpu-*.list
-        sudo -E add-apt-repository ppa:kobuk-team/intel-graphics
-        sudo apt update
-        sudo apt install libigc2 -y
+          echo "Installing latest IGC from ROLLING repo..."
+          sudo rm -f /etc/apt/sources.list.d/intel-gpu-*.list
+          sudo -E add-apt-repository ppa:kobuk-team/intel-graphics
+          sudo apt update
+          sudo apt install --reinstall -y libigc2
+          echo "Completed: Intel graphics drivers installed for LTS"
         else
+          echo "ERROR: LTS mode only supports PVC GPU (got ${{ inputs.GPU }})"
           exit 1
         fi
