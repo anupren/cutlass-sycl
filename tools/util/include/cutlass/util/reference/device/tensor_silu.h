@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2024 - 2025 Codeplay Software Ltd. All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,85 +29,85 @@
  *
  **************************************************************************************************/
 
-/* \file
-  \brief Defines device-side elementwise operations on TensorView. Note, the operations defined
-    in this header are not specialized for any particular data layout and are therefore not
-    intended to offer the best possible performance. Rather, they are intended to be generic
-    reference implementations to support the CUTLASS unit tests.
+/*! \file
+  \brief 
+
 */
 
 #pragma once
 
-// Cutlass includes
-#include "cutlass/cutlass.h"
-#include "cutlass/tensor_view.h"
+#include "cutlass/epilogue/threadblock/predicated_tile_iterator.h"
+#include "cutlass/gemm/gemm.h"
+#include "cutlass/layout/pitch_linear.h"
 
-#include "cutlass/util/reference/device/tensor_foreach.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass {
-namespace reference {
-namespace device {
+namespace epilogue {
+namespace threadblock {
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
-namespace detail {
-
+/// Defines the optimal thread map for TensorOp accumulator layouts
 template <
-  typename Element,               ///< Element type
-  typename Layout>                ///< Layout function
-struct TensorSiLuFunc {
+  typename ThreadblockShape_,
+  typename WarpShape_,
+  int PartitionsK,
+  typename Element_,
+  int ElementsPerAccess
+>
+struct DefaultThreadMapTensorOpForFusedBias {
 
-  /// View type
-  using TensorView = TensorView<Element, Layout>;
+  using ThreadblockShape = ThreadblockShape_;
+  using WarpShape = WarpShape_;
+  static int const kPartitionsK = PartitionsK;
+  using Element = Element_;
+  static int const kElementsPerAccess = ElementsPerAccess;
 
-  /// Coordinate in tensor's index space
-  using TensorCoord = typename TensorView::TensorCoord;
+  //
+  // Definitions
+  //
 
-  /// Parameters structure
-  struct Params {
-    TensorView view;
-    Params(TensorView view_ = TensorView()): view(view_) {}
+  struct Detail {
+
+    /// Tensor Operations fundamentally perform operations on 8 rows
+    static int const kTensorOpRows = 8;
+    static int const kWarpSize = 32;
+
+    static_assert(
+      !(ThreadblockShape::kM % WarpShape::kM) &&
+      !(ThreadblockShape::kM % WarpShape::kM), "Divisibility");
+
+    /// Number of warps
+    using WarpCount = gemm::GemmShape<
+      ThreadblockShape::kM / WarpShape::kM,
+      ThreadblockShape::kN / WarpShape::kN,
+      kPartitionsK
+    >;
+
+    /// Number of participating threads
+    static int const kThreads = WarpCount::kCount * kWarpSize;
   };
 
-  Params params;
-
-  CUTLASS_DEVICE
-  TensorSiLuFunc(Params const &params): params(params) {}
-
-  CUTLASS_DEVICE
-  void operator()(TensorCoord const &coord) {
-    Element const & value = params.view.at(coord);
-    params.view.at(coord) = value * sycl::native::recip(Element(1) + fast_exp(-value));
-  }
+  //
+  // ThreadMap
+  //
+  
+  /// ThreadMap to be used by epilogue::PredicatedTileIterator satisfying concept OutputTileThreadMap
+  using Type = OutputTileOptimalThreadMapBiasAct <
+    OutputTileShape<ThreadblockShape::kN, Detail::kTensorOpRows, Detail::WarpCount::kM, 1, 1>,
+    OutputTileShape<1, WarpShape::kM / Detail::kTensorOpRows, 1, 1, WarpShape::kM / Detail::kTensorOpRows>,
+    Detail::kThreads,
+    kElementsPerAccess,
+    sizeof_bits<Element>::value
+  >;
 };
 
-} // namespace detail
+///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Apply SiLu on a tensor
-template <
-  typename Element,               ///< Element type
-  typename Layout>                ///< Layout function
-void TensorSiLu(
-  TensorView<Element, Layout> view) {       ///< destination tensor
-
-  using Func = detail::TensorSiLuFunc<Element, Layout>;
-  using Params = typename Func::Params;
-
-  TensorForEach<Func, Layout::kRank, Params>(
-    view.extent(),
-    Params(view)
-  );
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-} // namespace device
-} // namespace reference
+} // namespace threadblock
+} // namespace epilogue
 } // namespace cutlass
 
+////////////////////////////////////////////////////////////////////////////////

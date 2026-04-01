@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -1344,6 +1344,8 @@ using DeviceKernel = cutlass::gemm::device::GemmUniversalAdapter<${operation_nam
             tschedule = operation.tile_description.tile_scheduler
 
         arch = f"cutlass::arch::Xe{operation.arch}" if is_intel_xe_arch(operation.arch) else f"cutlass::arch::Sm{operation.arch}"
+        emit_tile_m, emit_tile_n, emit_tile_k = operation.tile_description.blackwell_threadblock_shape
+
         values = {
             "operation_name": operation.procedural_name(),
             "operation_suffix": self.operation_suffix,
@@ -1359,9 +1361,9 @@ using DeviceKernel = cutlass::gemm::device::GemmUniversalAdapter<${operation_nam
             "element_epilogue": DataTypeTag[operation.epilogue_functor.element_epilogue],
             "opcode_class": OpcodeClassTag[operation.tile_description.math_instruction.opcode_class],
             "arch": arch,
-            "threadblock_shape_m": str(operation.tile_description.threadblock_shape[0]),
-            "threadblock_shape_n": str(operation.tile_description.threadblock_shape[1]),
-            "threadblock_shape_k": str(operation.tile_description.threadblock_shape[2]),
+            "threadblock_shape_m": str(emit_tile_m),
+            "threadblock_shape_n": str(emit_tile_n),
+            "threadblock_shape_k": str(emit_tile_k),
             "cluster_m": str(operation.tile_description.cluster_shape[0]),
             "cluster_n": str(operation.tile_description.cluster_shape[1]),
             "cluster_k": str(operation.tile_description.cluster_shape[2]),

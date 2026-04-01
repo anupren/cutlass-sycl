@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -69,18 +68,12 @@ template <
   typename ScalarType,
   typename ComputeType,
   typename ElementD = ElementC,
-  typename LayoutD = LayoutC,
   typename ConvertOp = NumericConverter<ElementD, ScalarType>,
   typename InnerProductOp = multiply_add<ComputeType>,
   int kMblock = 4,
   int kNblock = 4
 >
-#if defined (CUTLASS_ENABLE_SYCL)
-void 
-#else
-__global__ void
-#endif
- GemmComplex(
+__global__ void GemmComplex(
   gemm::GemmCoord problem_size,
   ScalarType alpha,
   TensorRef<ElementA, LayoutA> tensor_a,
@@ -89,7 +82,7 @@ __global__ void
   ComplexTransform transform_b,
   ScalarType beta,
   TensorRef<ElementC, LayoutC> tensor_c,
-  TensorRef<ElementD, LayoutD> tensor_d,
+  TensorRef<ElementD, LayoutC> tensor_d,
   ComputeType initial_accum,
   int batch_count = 1,
   int64_t batch_stride_A = 0,
@@ -100,8 +93,7 @@ __global__ void
   static_assert(
     LayoutA::kRank == 2 &&
     LayoutB::kRank == 2 &&
-    LayoutC::kRank == 2 &&
-    LayoutD::kRank == 2, "Tensors must be of rank 2");
+    LayoutC::kRank == 2, "Tensors must be of rank 2");
 
   int const M = problem_size.m();
   int const N = problem_size.n();
@@ -110,16 +102,18 @@ __global__ void
   ConvertOp convert_op;
   InnerProductOp inner_product_op;
   
-  int row_block = (BlockIdxX() * BlockDimX() + ThreadIdxX()) * kMblock;
-  int col_block = (BlockIdxY() * BlockDimY() + ThreadIdxY()) * kNblock; 
-  int batch_idx = BlockIdxZ();
+  int row_block = (blockIdx.x * blockDim.x + threadIdx.x) * kMblock;
+  int col_block = (blockIdx.y * blockDim.y + threadIdx.y) * kNblock; 
+  int batch_idx = blockIdx.z;
 
   tensor_a.add_pointer_offset(batch_idx * batch_stride_A);
   tensor_b.add_pointer_offset(batch_idx * batch_stride_B);
-  if(beta != ScalarType(0)) tensor_c.add_pointer_offset(batch_idx * batch_stride_C);
+  if(tensor_c.data()) {
+    tensor_c.add_pointer_offset(batch_idx * batch_stride_C);
+  }
   tensor_d.add_pointer_offset(batch_idx * batch_stride_D);
 
-  for (; batch_idx < batch_count; batch_idx += GridDimZ()) {
+  for (; batch_idx < batch_count; batch_idx += gridDim.z) {
 
     // Compute matrix product using blocks
     ComputeType accum[kMblock][kNblock];
@@ -171,23 +165,21 @@ __global__ void
         MatrixCoord coord = MatrixCoord(row, col);
 
         if (row < M && col < N) {
-          if(beta != ScalarType(0)) {
-            tensor_d.at(coord) = convert_op(
-              alpha * ScalarType(accum[i][j]) + 
-              beta * ScalarType(tensor_c.at(coord)));
-          } else {
-            tensor_d.at(coord) = convert_op(
-              alpha * ScalarType(accum[i][j]));
+          ScalarType epilog = alpha * ScalarType(accum[i][j]);
+          if(tensor_c.data()) {
+            epilog += beta * ScalarType(tensor_c.at(coord));
           }
-
+          tensor_d.at(coord) = convert_op(epilog);
         }
       }
     }
 
-    tensor_a.add_pointer_offset(batch_stride_A * GridDimZ());
-    tensor_b.add_pointer_offset(batch_stride_B * GridDimZ());
-    if(beta != ScalarType(0)) tensor_c.add_pointer_offset(batch_stride_C * GridDimZ());
-    tensor_d.add_pointer_offset(batch_stride_D * GridDimZ());
+    tensor_a.add_pointer_offset(batch_stride_A * gridDim.z);
+    tensor_b.add_pointer_offset(batch_stride_B * gridDim.z);
+    if(tensor_c.data()) {
+      tensor_c.add_pointer_offset(batch_stride_C * gridDim.z);
+    }
+    tensor_d.add_pointer_offset(batch_stride_D * gridDim.z);
 
   } // for (batch_idx)
 }
@@ -195,8 +187,6 @@ __global__ void
 } // namespace kernel
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-template<class...> class GemmComplexKernelName;
 
 /// Computes a general matrix product among matrices (tensors of rank=2) pointed to by TensorRef
 /// objects.
@@ -215,7 +205,6 @@ template <
   typename ScalarType,
   typename ComputeType,
   typename ElementD = ElementC,
-  typename LayoutD = LayoutC,
   typename ConvertOp = NumericConverter<ElementD, ScalarType>,
   typename InnerProductOp = multiply_add<ComputeType>
 >
@@ -228,7 +217,7 @@ void GemmComplex(
   ComplexTransform transform_b,
   ScalarType beta,
   TensorRef<ElementC, LayoutC> tensor_c,
-  TensorRef<ElementD, LayoutD> tensor_d,
+  TensorRef<ElementD, LayoutC> tensor_d,
   ComputeType initial_accum,
   int batch_count = 1,
   int64_t batch_stride_A = 0,
@@ -239,15 +228,10 @@ void GemmComplex(
   static_assert(
     LayoutA::kRank == 2 &&
     LayoutB::kRank == 2 &&
-    LayoutC::kRank == 2 &&
-    LayoutD::kRank == 2, "Tensors must be of rank 2");
-
+    LayoutC::kRank == 2, "Tensors must be of rank 2");
+ 
   int const kMblock = 4;
   int const kNblock = 4;
-
-#if defined (CUTLASS_ENABLE_SYCL)
-using compat::dim3;
-#endif
 
   dim3 block(16, 8);
   dim3 grid(
@@ -257,56 +241,6 @@ using compat::dim3;
   );
 
   if (grid.y <= std::numeric_limits<uint16_t>::max()) {
-#if defined(CUTLASS_ENABLE_SYCL)
-
-  compat::launch<kernel::GemmComplex<
-                      ElementA,
-                      LayoutA,
-                      ElementB,
-                      LayoutB,
-                      ElementC,
-                      LayoutC,
-                      ScalarType,
-                      ComputeType,
-                      ElementD,
-                      LayoutD,
-                      ConvertOp,
-                      InnerProductOp,
-                      kMblock,
-                      kNblock
-                    >, GemmComplexKernelName<
-                      ElementA,
-                      LayoutA,
-                      ElementB,
-                      LayoutB,
-                      ElementC,
-                      LayoutC,
-                      ScalarType,
-                      ComputeType,
-                      ElementD,
-                      LayoutD,
-                      ConvertOp,
-                      InnerProductOp,
-                      decltype(kMblock),
-                      decltype(kNblock)
-                    >>(grid, block, 
-                        problem_size,
-                        alpha,
-                        tensor_a,
-                        transform_a,
-                        tensor_b,
-                        transform_b,
-                        beta,
-                        tensor_c,
-                        tensor_d,
-                        initial_accum,
-                        batch_count,
-                        batch_stride_A,
-                        batch_stride_B,
-                        batch_stride_C,
-                        batch_stride_D
-                    );
-#else
     kernel::GemmComplex<
       ElementA,
       LayoutA,
@@ -317,7 +251,6 @@ using compat::dim3;
       ScalarType,
       ComputeType,
       ElementD,
-      LayoutD,
       ConvertOp,
       InnerProductOp,
       kMblock,
@@ -339,7 +272,6 @@ using compat::dim3;
       batch_stride_C,
       batch_stride_D
     );
-#endif
   } else {
     // Using bigger thread tile size
     int const kBigMblock = 4;
@@ -347,58 +279,11 @@ using compat::dim3;
 
     dim3 Bigblock(16, 8);
     dim3 Biggrid(
-      (problem_size.m() + Bigblock.x * kBigMblock - 1) / (Bigblock.x * kBigMblock),
-      (problem_size.n() + Bigblock.y * kBigNblock - 1) / (Bigblock.y * kBigNblock),
+      (problem_size.m() + block.x * kBigMblock - 1) / (block.x * kBigMblock),
+      (problem_size.n() + block.y * kBigNblock - 1) / (block.y * kBigNblock),
       batch_count % std::numeric_limits<uint16_t>::max()
     );
 
-#if defined (CUTLASS_ENABLE_SYCL)
-  compat::launch<kernel::GemmComplex<
-                      ElementA,
-                      LayoutA,
-                      ElementB,
-                      LayoutB,
-                      ElementC,
-                      LayoutC,
-                      ScalarType,
-                      ComputeType,
-                      ElementD,
-                      LayoutD,
-                      ConvertOp,
-                      InnerProductOp,
-                      kBigMblock,
-                      kBigNblock
-                    >, GemmComplexKernelName<
-                      ElementA,
-                      LayoutA,
-                      ElementB,
-                      LayoutB,
-                      ElementC,
-                      LayoutC,
-                      ScalarType,
-                      ComputeType,
-                      ElementD,
-                      LayoutD,
-                      ConvertOp,
-                      InnerProductOp
-                    >>(Biggrid, Bigblock, 
-                        problem_size,
-                        alpha,
-                        tensor_a,
-                        transform_a,
-                        tensor_b,
-                        transform_b,
-                        beta,
-                        tensor_c,
-                        tensor_d,
-                        initial_accum,
-                        batch_count,
-                        batch_stride_A,
-                        batch_stride_B,
-                        batch_stride_C,
-                        batch_stride_D
-                    );
-#else
     kernel::GemmComplex<
       ElementA,
       LayoutA,
@@ -409,7 +294,6 @@ using compat::dim3;
       ScalarType,
       ComputeType,
       ElementD,
-      LayoutD,
       ConvertOp,
       InnerProductOp,
       kBigMblock,
@@ -431,7 +315,6 @@ using compat::dim3;
       batch_stride_C,
       batch_stride_D
     );
-#endif
   }
 }
 
@@ -449,8 +332,7 @@ template <
   typename ElementC,
   typename LayoutC,
   typename ScalarType,
-  typename ElementD = ElementC,
-  typename LayoutD = LayoutC
+  typename ElementD = ElementC
 >
 void GemmComplex(
   gemm::GemmCoord problem_size,
@@ -461,7 +343,7 @@ void GemmComplex(
   ComplexTransform transform_b,
   ScalarType beta,
   TensorRef<ElementC, LayoutC> tensor_c,
-  TensorRef<ElementD, LayoutD> tensor_d) {
+  TensorRef<ElementD, LayoutC> tensor_d) {
 
   GemmComplex(problem_size, alpha, tensor_a, transform_a, tensor_b, transform_b, beta, tensor_c, tensor_d, ScalarType(0));
 }

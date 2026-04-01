@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -142,9 +142,6 @@ struct KernelTmaWarpSpecializedMixedInput : KernelTmaWarpSpecialized { };
 struct KernelTmaWarpSpecializedPingpongMixedInput : KernelTmaWarpSpecializedPingpong { };
 struct KernelTmaWarpSpecializedCooperativeMixedInput: KernelTmaWarpSpecializedCooperative { };
 
-struct KernelXe { };
-struct KernelXeCooperative { };
-struct KernelXePtrArrayCooperative { };
 //////////////////////////////////////////////////////////////////////////////
 
 //
@@ -542,7 +539,7 @@ struct KernelTmaWarpSpecializedInputTransformSm100 final {
   static constexpr int AccumulatorPipelineStageCount = AccumulatorPipelineStageCount_;
 };
 
-// InputTransform GEMM
+// Mixed Input Transform GEMM
 template<
   int SchedulerPipelineStageCount_,
   int AccumulatorPipelineStageCount_
@@ -607,22 +604,22 @@ struct KernelTmaWarpSpecializedPingpongBlockScaledSm120 : KernelTmaWarpSpecializ
 
 // SM120 dense Ptr-array kernel schedules
 template<int SchedulerPipelineStageCount_>
-struct KernelPtrArrayTmaWarpSpecializedCooperativeSm120 : KernelPtrArrayTmaWarpSpecializedCooperative {
+struct KernelPtrArrayTmaWarpSpecializedCooperativeSm120 : KernelPtrArrayTmaWarpSpecializedCooperative { 
   static constexpr int SchedulerPipelineStageCount = SchedulerPipelineStageCount_;
 };
 
 template<int SchedulerPipelineStageCount_>
-struct KernelPtrArrayTmaWarpSpecializedPingpongSm120 : KernelPtrArrayTmaWarpSpecializedPingpong {
+struct KernelPtrArrayTmaWarpSpecializedPingpongSm120 : KernelPtrArrayTmaWarpSpecializedPingpong { 
   static constexpr int SchedulerPipelineStageCount = SchedulerPipelineStageCount_;
 };
 
 template<int SchedulerPipelineStageCount_>
-struct KernelPtrArrayTmaWarpSpecializedCooperativeBlockScaledSm120 : KernelPtrArrayTmaWarpSpecializedCooperative {
+struct KernelPtrArrayTmaWarpSpecializedCooperativeBlockScaledSm120 : KernelPtrArrayTmaWarpSpecializedCooperative { 
   static constexpr int SchedulerPipelineStageCount = SchedulerPipelineStageCount_;
 };
 
 template<int SchedulerPipelineStageCount_>
-struct KernelPtrArrayTmaWarpSpecializedPingpongBlockScaledSm120 : KernelPtrArrayTmaWarpSpecializedPingpong {
+struct KernelPtrArrayTmaWarpSpecializedPingpongBlockScaledSm120 : KernelPtrArrayTmaWarpSpecializedPingpong { 
   static constexpr int SchedulerPipelineStageCount = SchedulerPipelineStageCount_;
 };
 
@@ -789,6 +786,24 @@ struct KernelPtrArrayTmaWarpSpecialized1SmFastFP32Sm100     final : KernelSchedu
 struct KernelPtrArrayTmaWarpSpecialized2SmFastFP32Sm100     final : KernelSchedule2Sm, KernelScheduleSm100PtrArrayFastFP32Gemm { };
 struct KernelPtrArrayTmaWarpSpecialized1SmFastFP32SmemSm100 final : KernelSchedule1Sm, KernelTmaWarpSpecializedPtrArrayFastFP32SmemSm100 { };
 struct KernelPtrArrayTmaWarpSpecialized2SmFastFP32SmemSm100 final : KernelSchedule2Sm, KernelTmaWarpSpecializedPtrArrayFastFP32SmemSm100 { };
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// SM100 Interleaved Complex GEMM Dispatch Policies
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+struct KernelScheduleSm100InterleavedComplexTF32Gemm : KernelScheduleSm100 {};
+// Transform GEMM: Specialize for Interleaved Complex GEMMs
+struct KernelTmaWarpSpecialized1SmInterleavedComplexTF32Sm100 final : KernelSchedule1Sm, KernelScheduleSm100InterleavedComplexTF32Gemm { };
+struct KernelTmaWarpSpecialized2SmInterleavedComplexTF32Sm100 final : KernelSchedule2Sm, KernelScheduleSm100InterleavedComplexTF32Gemm { };
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// SM100 Ptr-Array Interleaved Complex GEMM Dispatch Policies
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// Interleaved Complex GEMM + (Ptr array or Group GEMM)
+struct KernelScheduleSm100PtrArrayInterleavedComplexTF32Gemm : KernelScheduleSm100InterleavedComplexTF32Gemm {};
+// Ptr-Array Transform GEMM: Specialize for 1SM vs 2SM Complex GEMM
+// Transform GEMM: Specialize for Interleaved Complex GEMMs
+struct KernelPtrArrayTmaWarpSpecialized1SmInterleavedComplexTF32Sm100 final : KernelSchedule1Sm, KernelScheduleSm100PtrArrayInterleavedComplexTF32Gemm { };
+struct KernelPtrArrayTmaWarpSpecialized2SmInterleavedComplexTF32Sm100 final : KernelSchedule2Sm, KernelScheduleSm100PtrArrayInterleavedComplexTF32Gemm { };
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // SM100 Sparse GEMM Dispatch Policies
@@ -1136,6 +1151,33 @@ struct MainloopSm100TmaUmmaWarpSpecializedFastF32 {
 };
 
 
+template<
+  // Number of Pipeline stages for
+  // MainloopLoad <-> Transformation
+  int ComputationPipelineStageCount_,
+  // TileScheduler pipeline depth
+  int SchedulerPipelineStageCount_,
+  // Accmulator pipeline depth
+  int AccumulatorPipelineStageCount_,
+  // Number of Pipeline stages for
+  // Transformation <-> MMA
+  int TransformationPipelineStageCount_,
+  class ClusterShape_ = Shape<_1,_1,_1>,
+  class AccumulatorCopyAtom_ = cute::SM100_TMEM_LOAD_16dp256b1x
+>
+struct MainloopSm100TmaUmmaWarpSpecializedInterleavedComplexTF32 {
+  constexpr static int ComputationPipelineStageCount = ComputationPipelineStageCount_;
+  constexpr static int TransformationPipelineStageCount = TransformationPipelineStageCount_;
+  constexpr static detail::KernelInputTransformType InputTransformType = detail::KernelInputTransformType::InterleavedComplexTF32;
+  using ClusterShape = ClusterShape_;
+  using AccumulatorCopyAtom = AccumulatorCopyAtom_;
+  using ArchTag = arch::Sm100;
+  using Schedule = KernelTmaWarpSpecializedInputTransformSm100<SchedulerPipelineStageCount_, AccumulatorPipelineStageCount_>;
+
+  // For backwards compatibility with GemmUniversalAdapter.
+  constexpr static int Stages = ComputationPipelineStageCount;
+};
+
 // n-buffer in smem, pipelined with Blackwell Mixed Input kernel with UMMA (HwScaled) and TMA,
 template<
   // Number of Pipeline stages for
@@ -1168,6 +1210,23 @@ struct MainloopSm100TmaUmmaWarpSpecializedMixedInput {
 // n-buffer in smem, pipelined with Blackwell UMMA and TMA, Warp specialized dynamic schedule
 template<
   int Stages_,
+  // TileScheduler pipeline depth
+  int SchedulerPipelineStageCount_,
+  // Accmulator pipeline depth
+  int AccumulatorPipelineStageCount_,
+  class ClusterShape_ = Shape<_1,_1,_1>
+>
+struct MainloopSm100TmaUmmaWarpSpecializedPlanarComplex {
+  constexpr static int Stages = Stages_;
+  using ClusterShape = ClusterShape_;
+  using ArchTag = arch::Sm100;
+  using Schedule = KernelTmaWarpSpecializedSm100<SchedulerPipelineStageCount_, AccumulatorPipelineStageCount_>;
+  constexpr static bool IsOverlappingAccum = false;
+};
+
+// n-buffer in smem, pipelined with Blackwell UMMA and TMA, Warp specialized dynamic schedule
+template<
+  int Stages_,
   int SchedulerPipelineStageCount_,
   int AccumulatorPipelineStageCount_,
   class ClusterShape_ = Shape<_1,_1,_1>
@@ -1187,6 +1246,36 @@ template<
   int AccumulatorPipelineStageCount_,
   class ClusterShape_ = Shape<_1,_1,_1>
 >
+struct MainloopSm100RCGroupGemmTmaUmmaWarpSpecialized {
+  constexpr static int Stages = Stages_;
+  using ClusterShape = ClusterShape_;
+  using ArchTag = arch::Sm100;
+  constexpr static bool IsOverlappingAccum = false;
+  using Schedule = KernelPtrArrayTmaWarpSpecializedSm100<SchedulerPipelineStageCount_, AccumulatorPipelineStageCount_>;
+};
+
+// n-buffer in smem, pipelined with Blackwell UMMA and TMA, Warp specialized dynamic schedule
+template<
+  int Stages_,
+  int SchedulerPipelineStageCount_,
+  int AccumulatorPipelineStageCount_,
+  class ClusterShape_ = Shape<_1,_1,_1>
+>
+struct MainloopSm100RCGroupGemmTmaUmmaWarpSpecializedBlockScaled {
+  constexpr static int Stages = Stages_;
+  using ClusterShape = ClusterShape_;
+  using ArchTag = arch::Sm100;
+  constexpr static bool IsOverlappingAccum = AccumulatorPipelineStageCount_ == 1;
+  using Schedule = KernelPtrArrayTmaWarpSpecializedBlockScaledSm100<SchedulerPipelineStageCount_, AccumulatorPipelineStageCount_>;
+};
+
+// n-buffer in smem, pipelined with Blackwell UMMA and TMA, Warp specialized dynamic schedule
+template<
+  int Stages_,
+  int SchedulerPipelineStageCount_,
+  int AccumulatorPipelineStageCount_,
+  class ClusterShape_ = Shape<_1,_1,_1>
+>
 struct MainloopSm100ArrayTmaUmmaWarpSpecializedBlockScaled {
   constexpr static int Stages = Stages_;
   using ClusterShape = ClusterShape_;
@@ -1195,6 +1284,22 @@ struct MainloopSm100ArrayTmaUmmaWarpSpecializedBlockScaled {
   using Schedule = KernelPtrArrayTmaWarpSpecializedBlockScaledSm100<SchedulerPipelineStageCount_, AccumulatorPipelineStageCount_>;
 };
 
+
+
+// n-buffer in smem, pipelined with Blackwell UMMA and TMA, Warp specialized dynamic schedule
+template<
+  int Stages_,
+  int SchedulerPipelineStageCount_,
+  int AccumulatorPipelineStageCount_,
+  class ClusterShape_ = Shape<_1,_1,_1>
+>
+struct MainloopSm100ArrayTmaUmmaWarpSpecializedPlanarComplex {
+  constexpr static int Stages = Stages_;
+  using ClusterShape = ClusterShape_;
+  using ArchTag = arch::Sm100;
+  constexpr static bool IsOverlappingAccum = false;
+  using Schedule = KernelPtrArrayTmaWarpSpecializedSm100<SchedulerPipelineStageCount_, AccumulatorPipelineStageCount_>;
+};
 
 
 // n-buffer in smem, pipelined with Blackwell Fast FP32 kernel with UMMA (HwScaled) and TMA,
@@ -1245,70 +1350,33 @@ struct MainloopSm100ArrayTmaUmmaWarpSpecializedFastF32 {
 };
 
 
-#if defined(SYCL_INTEL_TARGET)
+template<
+  // Number of Pipeline stages for
+  // MainloopLoad <-> Transformation
+  int ComputationPipelineStageCount_,
+  // TileScheduler pipeline depth
+  int SchedulerPipelineStageCount_,
+  // Accmulator pipeline depth
+  int AccumulatorPipelineStageCount_,
+  // Number of Pipeline stages for
+  // Transformation <-> MMA
+  int TransformationPipelineStageCount_,
+  class ClusterShape_ = Shape<_1,_1,_1>,
+  class AccumulatorCopyAtom_ = cute::SM100_TMEM_LOAD_16dp256b1x
+>
+struct MainloopSm100ArrayTmaUmmaWarpSpecializedInterleavedComplexTF32 {
+  constexpr static int ComputationPipelineStageCount = ComputationPipelineStageCount_;
+  constexpr static int TransformationPipelineStageCount = TransformationPipelineStageCount_;
+  constexpr static detail::KernelInputTransformType InputTransformType = detail::KernelInputTransformType::InterleavedComplexTF32;
+  using ClusterShape = ClusterShape_;
+  using AccumulatorCopyAtom = AccumulatorCopyAtom_;
+  using ArchTag = arch::Sm100;
+  using Schedule = KernelPtrArrayTmaWarpSpecializedInputTransformSm100<SchedulerPipelineStageCount_, AccumulatorPipelineStageCount_>;
 
-// Specialization of the GEMM mainloop for Intel Xe architectures.
-// This version is tuned for operations using DPAS instructions with a subgroup size of 16.
-// Suitable for use with Intel Battlemage (Xe2) and PVC (Xe) architectures.
-template<int Stages_, class KernelSchedule = KernelXe>
-struct MainloopIntelXeXMX16 {
-  constexpr static int Stages = Stages_;
-  constexpr static int SubgroupSize = 16;
-  using ArchTag = arch::IntelXe;
-  using Schedule = KernelSchedule;
-  using ClusterShape = Shape<_1,_1,_1>;
+  // For backwards compatibility with GemmUniversalAdapter.
+  constexpr static int Stages = ComputationPipelineStageCount;
 };
 
-template<int Stages_, class KernelScheduler = KernelXePtrArrayCooperative>
-struct MainloopIntelXeXMX16Group : MainloopIntelXeXMX16<Stages_, KernelScheduler> {
-};
-
-template<int Stages_, class KernelScheduler = KernelXePtrArrayCooperative>
-struct MainloopXeL1StagedGroup : MainloopIntelXeXMX16<Stages_, KernelScheduler> {
-};
-
-template<int Stages_, class KernelScheduler = KernelXePtrArrayCooperative>
-struct MainloopIntelXeXMX16GroupMixedPrecision : MainloopIntelXeXMX16<Stages_, KernelScheduler> {
-};
-
-template<int Stages_, class KernelSchedule = KernelXe>
-struct MainloopIntelXeXMX16MixedPrecision : MainloopIntelXeXMX16<Stages_, KernelSchedule> {
-};
-
-template<int Stages_, class KernelSchedule = KernelXe>
-struct MainloopIntelW8A8 : MainloopIntelXeXMX16<Stages_, KernelSchedule> {
-};
-
-template<int Stages_, class KernelScheduler = KernelXePtrArrayCooperative>
-struct MainloopIntelXeXMX16GroupFP8 : MainloopIntelXeXMX16<Stages_, KernelScheduler> {
-};
-
-template<int Stages_>
-struct MainloopIntelXeXMX16FP8Scaling : MainloopIntelXeXMX16<Stages_> {
-};
-
-#endif
-
-#if defined(CUTLASS_ENABLE_SYCL)
-struct MainloopDeviceAgnostic {
-  using ArchTag = arch::Agnostic;
-  using ClusterShape = Shape<_1,_1,_1>;
-  using Schedule = KernelMultistage;
-};
-#endif
-
-#if defined(CUTLASS_ENABLE_SYCL) 
-// Note: This dispatch policy is specifically added for CollectiveMma to support
-// the integration of new MMA atoms (XE_DPAS_TT) and copy atoms for Intel XE architecture
-template<int Stages_, class KernelSchedule = KernelXe>
-struct MainloopXeL1Staged {
-  constexpr static int Stages = Stages_;
-  constexpr static int SubgroupSize = 16;
-  using ArchTag = arch::IntelXe;
-  using Schedule = KernelSchedule;
-  using ClusterShape = Shape<_1,_1,_1>;
-};
-#endif
 
 // n-buffer in smem, pipelined with Blackwell UMMA and TMA, Warp specialized dynamic schedule
 template<
@@ -1382,7 +1450,7 @@ struct MainloopSm120ArrayTmaWarpSpecialized {
   static_assert(
     cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedCooperative, Schedule> ||
     cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedPingpong, Schedule>,
-    "KernelSchedule must be one of the Ptr-Array or Grouped Gemm TMA Warp Specialized Cooperative or Pingpong policies");
+    "KernelSchedule must be one of the Ptr-Array or Grouped Gemm TMA Warp Specialized Cooperative or Pingpong policies");                                     
 };
 
 
@@ -1416,7 +1484,7 @@ struct MainloopSm120ArrayTmaWarpSpecializedBlockScaled {
   using ArchTag = arch::Sm120;
 
   static_assert(cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedCooperative, Schedule> ||
-                cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedPingpong, Schedule>,
+                cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedPingpong, Schedule>, 
                 "KernelSchedule must be one of the Ptr-Array or Grouped Gemm TMA Warp Specialized Cooperative or Pingpong policies.");
 };
 

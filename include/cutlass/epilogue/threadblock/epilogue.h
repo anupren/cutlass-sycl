@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,13 +38,10 @@
 */
 
 #pragma once
-
-#if !defined(CUTLASS_ENABLE_SYCL)
+#include "cutlass/cutlass.h"
+#ifndef __QNX__
 #include CUDA_STD_HEADER(cassert)
 #endif
-
-#include "cutlass/cutlass.h"
-
 
 #include "cutlass/numeric_types.h"
 #include "cutlass/array.h"
@@ -337,7 +334,7 @@ public:
     // Store fragment to shared memory
     this->warp_tile_iterator_.store(accum_fragment);
 
-    syncthreads();
+    __syncthreads();
 
     // Initialize/load source-fragment data
     typename OutputTileIterator::Fragment source_fragment;
@@ -426,7 +423,7 @@ public:
     if (!output_op.is_source_needed())
     {
       source_iterator.clear_mask();
-      syncthreads();  // Dummy (CUDA 11.0)
+      __syncthreads();  // Dummy (CUDA 11.0)
     }
 
     operator()(output_op, destination_iterator, accumulators, SourceAspectNeeded(source_iterator));
@@ -496,12 +493,12 @@ public:
       // Convert and store fragment
       //
 
-      syncthreads();
+      __syncthreads();
 
       acc2smem<cutlass::make_index_sequence<OutputTileIterator::kIterations>>::push(
         iter, accum_fragment_iterator, this->warp_tile_iterator_);
 
-      syncthreads();
+      __syncthreads();
 
       //
       // Load fragments from shared memory

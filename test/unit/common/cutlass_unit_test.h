@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 - 2026 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,22 +38,17 @@
 #pragma warning( disable : 4503)
 
 #include <cstdlib>
-#include <iostream>
 #include <string>
 
-#if !defined(CUTLASS_ENABLE_SYCL)
 #include <cuda_runtime_api.h>
-#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if !defined(CUTLASS_ENABLE_SYCL)
 /// Gets a CUDA device
 cudaDeviceProp GetCudaDevice();
 
 /// Prints device properties
 std::ostream &operator<<(std::ostream &out, cudaDeviceProp const &device);
-#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -104,31 +98,5 @@ int CutlassUnitTestProblemCount();
 #include <cutlass/cutlass.h>
 #include <cutlass/numeric_types.h>
 #include <cutlass/trace.h>
-
-#include "util.hpp"
-/////////////////////////////////////////////////////////////////////////////////////////////////
-
-namespace test {
-namespace unit {
-
-inline void LogUnsupportedOnce(bool& printed_unsupported_once, char const* reason = nullptr) {
-  if (printed_unsupported_once) {
-    return;
-  }
-  auto* test_info = ::testing::UnitTest::GetInstance()->current_test_info();
-  if (test_info) {
-    std::cerr << "Test unsupported: " << test_info->test_suite_name() << "." << test_info->name();
-  } else {
-    std::cerr << "Test unsupported";
-  }
-  if (reason && reason[0] != '\0') {
-    std::cerr << ": " << reason;
-  }
-  std::cerr << "\n";
-  printed_unsupported_once = true;
-}
-
-} // namespace unit
-} // namespace test
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,8 @@
  **************************************************************************************************/
 
 #pragma once
+
+#include "cutlass/tfloat32.h"
 
 /**
  * \file
@@ -586,6 +588,7 @@ struct alignment_of : std::alignment_of<value_t> {};
 
 #endif
 
+#if CUDA_VERSION >= 11080
 /* 16B specializations where 32-bit Win32 host compiler disagrees with device compiler */
 template <>
 struct alignment_of<int4> {
@@ -657,7 +660,9 @@ template <>
 struct alignment_of<double4_32a> {
   enum { value = 32 };
 };
+
 #else
+
 template <>
 struct alignment_of<long4> {
   enum { value = 16 };
@@ -679,7 +684,8 @@ struct alignment_of<double4> {
   enum { value = 16 };
 };
 
-#endif
+#endif // CUDA_VECTOR_TYPE_ALIGNMENT_16_32_ENABLED
+#endif // CUDA_VERSION >= 11080
 
 // Specializations for volatile/const qualified types
 template <typename value_t>
@@ -925,6 +931,18 @@ struct numeric_limits<float> {
   static constexpr bool is_integer = false;
   static constexpr bool has_infinity = true;
   static constexpr bool is_signed = true;
+};
+
+template <>
+struct numeric_limits<tfloat32_t> {
+  CUTLASS_HOST_DEVICE
+  static tfloat32_t infinity() noexcept { return tfloat32_t::bitcast(0x7f800000);}
+  CUTLASS_HOST_DEVICE
+  static tfloat32_t max() noexcept { return tfloat32_t::bitcast(0x7f7fffff);}
+  CUTLASS_HOST_DEVICE
+  static tfloat32_t lowest() noexcept { return tfloat32_t::bitcast(0xff7fffff);}
+  static constexpr bool is_integer = false;
+  static constexpr bool has_infinity = true;
 };
 
 /// Returns a value that curries the `std::maximum()` function into the identity

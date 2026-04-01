@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -54,10 +54,11 @@ from cutlass_cppgen.utils.check import valid_stage_count
 from cutlass_cppgen.utils.datatypes import td_from_profiler_td, td_from_profiler_op
 
 
-# Intel Xe architectures and supported NVIDIA architectures  
+# Intel Xe architectures and supported NVIDIA architectures
 # Intel Xe: 12 (PVC/Xe-HPC), 20 (BMG/Xe2), 30 (future)
 # NVIDIA architectures: 50, 60, 61, 70, 75, 80, 90, 100
 _generator_ccs = [INTEL_XE12, INTEL_XE20] #50, 60, 61, 70, 75, 80, 90, 100]
+
 
 class KernelsForDataType:
     """

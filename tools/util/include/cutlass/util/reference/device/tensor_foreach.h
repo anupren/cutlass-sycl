@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,13 +30,9 @@
  **************************************************************************************************/
 #pragma once
 
-#include <limits>
 #include <stdexcept>
 #include "cutlass/cutlass.h"
 #include "cutlass/util/reference/device/kernel/tensor_foreach.h"
-#include "cutlass/kernel_hardware_info.h"
-
-template<class, class> class TensorForEachKernelName;
 
 namespace cutlass  {
 namespace reference {
@@ -56,13 +51,7 @@ struct TensorForEach {
     cudaStream_t stream = nullptr) {
 
     if (!grid_size || !block_size) {
-#if defined (CUTLASS_ENABLE_SYCL)
-      // TODO: query the queue for block size
-      block_size = 128;
-      grid_size = (size.product() + block_size - 1) / block_size;
-      int sm_count = KernelHardwareInfo::query_device_multiprocessor_count();
-      grid_size = grid_size > sm_count / 2 ? sm_count / 2 : grid_size;
-#else
+
       // if grid_size or block_size are zero, query occupancy using the CUDA Occupancy API
       cudaError_t result = cudaOccupancyMaxPotentialBlockSize(
         &grid_size,
@@ -75,24 +64,16 @@ struct TensorForEach {
       // Limit block size. This has the effect of increasing the number of items processed by a
       // single thread and reduces the impact of initialization overhead.
       block_size = (block_size < 128 ? block_size : 128);
-#endif
     }
 
-#if defined(CUTLASS_ENABLE_SYCL)
-    const auto sycl_block = compat::dim3(block_size, 1, 1);
-    const auto sycl_grid = compat::dim3(grid_size, 1, 1);
-    compat::launch<kernel::TensorForEach<Func, Rank, Params>, TensorForEachKernelName<Func, decltype(Rank)>>(sycl_grid, sycl_block, size, params);
-#else
     dim3 grid(grid_size, 1, 1);
     dim3 block(block_size, 1, 1);
+
     kernel::TensorForEach<Func, Rank, Params><<< grid, block, 0, stream >>>(size, params);
-#endif
   }
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-
-template<class, class, class> class TensorDiagonalForEachKernelName;
 
 /// Launches a kernel calling a functor for each element along a tensor's diagonal
 template <typename Func, int Rank, typename Params>
@@ -108,23 +89,16 @@ struct TensorDiagonalForEach {
       end = size.min();
     }
 
-#if defined(CUTLASS_ENABLE_SYCL)
-    const auto sycl_block = compat::dim3(block_size, 1, 1);
-    const auto sycl_grid = compat::dim3((end - start + block_size - 1) / block_size, 1, 1);
-    compat::launch<kernel::TensorDiagonalForEach<Func, Rank, Params>, TensorDiagonalForEachKernelName<Func, decltype(Rank), Params>>(sycl_grid, sycl_block, size, params, start, end);
-#else
     dim3 block(block_size, 1, 1);
     dim3 grid((end - start + block_size - 1) / block_size, 1, 1);
+
     kernel::TensorDiagonalForEach<Func, Rank, Params><<< grid, block, 0, stream >>>(
       size, params, start, end);
-#endif
   }
 };
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-
-template<class, class> class BlockForEachKernelName;
 
 template <typename Element, typename Func>
 struct BlockForEach {
@@ -139,12 +113,7 @@ struct BlockForEach {
     cudaStream_t stream = nullptr) {
 
     if (!grid_size || !block_size) {
-#if defined (CUTLASS_ENABLE_SYCL)
-      // TODO: query the queue for block size
-      block_size = 128;
-      // Ensure global range doesn't overflow int
-      grid_size = std::min(capacity, static_cast<size_t>(std::numeric_limits<int>::max())) / block_size;
-#else
+
       // if grid_size or block_size are zero, query occupancy using the CUDA Occupancy API
       cudaError_t result = cudaOccupancyMaxPotentialBlockSize(
         &grid_size,
@@ -157,18 +126,12 @@ struct BlockForEach {
       // Limit block size. This has the effect of increasing the number of items processed by a
       // single thread and reduces the impact of initialization overhead.
       block_size = (block_size < 128 ? block_size : 128);
-#endif
     }
 
-#if defined(CUTLASS_ENABLE_SYCL)
-    const auto sycl_block = compat::dim3(block_size, 1, 1);
-    const auto sycl_grid = compat::dim3(grid_size, 1, 1);
-    compat::launch<kernel::BlockForEach<Element, Func>, BlockForEachKernelName<Element, Func>>(sycl_grid, sycl_block, ptr, capacity, params);
-#else
     dim3 grid(grid_size, 1, 1);
     dim3 block(block_size, 1, 1);
+
     kernel::BlockForEach<Element, Func><<< grid, block, 0, stream >>>(ptr, capacity, params);
-#endif
   }
 };
 

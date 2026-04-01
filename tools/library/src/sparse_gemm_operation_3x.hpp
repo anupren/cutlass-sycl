@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,9 +34,6 @@
 
 #pragma once
 
-// Sparse GEMM operations are CUDA-only (not supported in SYCL)
-#if !defined(CUTLASS_ENABLE_SYCL)
-
 #include "cutlass/cutlass.h"
 #include "cutlass/detail/collective.hpp"
 #include "cutlass/array.h"
@@ -50,7 +46,7 @@
 #include "library_internal.h"
 #include "cutlass/gemm/dispatch_policy.hpp"
 #include "cutlass/util/packed_stride.hpp"
-#include "cutlass/util/initialize_block.hpp"
+#include "cutlass/util/mixed_dtype_utils.hpp"
 #include "cutlass/util/device_memory.h"
 #include "cutlass/util/reference/device/tensor_fill.h"
 #include "cutlass/util/reference/device/tensor_compare.h"
@@ -504,7 +500,5 @@ private:
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 } // namespace cutlass::library
-
-#endif // !defined(CUTLASS_ENABLE_SYCL)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

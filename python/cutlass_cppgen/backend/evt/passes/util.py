@@ -1,6 +1,6 @@
 #################################################################################################
 #
-# Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -36,8 +36,6 @@ Utilities for passes
 
 # Map from the CC of the kernel to the EVT implementation that the CC targets
 cc_map = {
-    12: 12,  # Intel Xe12 PVC
-    20: 20,  # Intel Xe20 BMG
     80:   80,
     86:   80,
     89:   80,

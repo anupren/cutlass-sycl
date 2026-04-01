@@ -1,4 +1,5 @@
-# Copyright (c) 2024 - 2025 Codeplay Software Ltd. All rights reserved.
+
+# Copyright (c) 2025 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,19 +27,12 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-if (CUTLASS_ENABLE_SYCL AND SYCL_INTEL_TARGET)
-  cutlass_add_executable(
-    copy_debug
-    copy_debug.cpp
-    )
 
-  target_link_libraries(
-    copy_debug
-    PRIVATE
-    CUTLASS
-    cutlass_tools_util_includes
-    )
-    
-  add_sycl_to_target(TARGET copy_debug)
+if (CUTLASS_NVCC_ARCHS MATCHES 103a)
+
+cutlass_example_add_executable(
+  89_sm103_fp4_ultra_gemm
+  89_sm103_fp4_ultra_gemm.cu
+)
 
 endif()

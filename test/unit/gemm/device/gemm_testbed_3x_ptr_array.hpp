@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -159,20 +158,6 @@ struct IsDefaultEpilogue<cutlass::epilogue::collective::DefaultEpilogue<args...>
 template<class ...args>
 struct IsDefaultEpilogue<cutlass::epilogue::collective::detail::Sm90TmaWarpSpecializedAdapter<args...>> {
   static constexpr bool value = true;
-};
-
-template <typename Epilogue, typename = void>
-struct IsLegacyEpiloguePolicy {
-  static constexpr bool value = false;
-};
-
-template <typename Epilogue>
-struct IsLegacyEpiloguePolicy<Epilogue, cute::void_t<decltype(Epilogue::DispatchPolicy::FragmentSize)>> {
-  using EpiloguePolicy = typename Epilogue::DispatchPolicy;
-  static constexpr bool value = cute::is_same_v<
-                                      EpiloguePolicy,
-                                      cutlass::epilogue::Sm90TmaWarpSpecializedBiasElementwise<
-                                        EpiloguePolicy::StagesC, EpiloguePolicy::StagesD, EpiloguePolicy::FragmentSize>>;
 };
 
 // The number of splits to test.
@@ -1177,7 +1162,13 @@ struct HostCollectiveEpilogue {
   //
   // FusionOperation derived types/queries
   //
-  static constexpr bool IsLegacy = detail::IsLegacyEpiloguePolicy<Epilogue>::value;
+  using EpiloguePolicy = typename Epilogue::DispatchPolicy;
+  static constexpr bool IsLegacy =
+  cute::is_same_v<
+    EpiloguePolicy,
+    cutlass::epilogue::Sm90TmaWarpSpecializedBiasElementwise<
+      EpiloguePolicy::StagesC, EpiloguePolicy::StagesD, EpiloguePolicy::FragmentSize>
+  >;
 
   using FusionOp = typename Gemm::EpilogueOutputOp;
   static_assert(cute::is_base_of_v<cutlass::epilogue::fusion::FusionOperation, FusionOp>);
@@ -2010,7 +2001,6 @@ struct TestbedImpl {
     return passed;
   }
 
-#ifndef SYCL_INTEL_TARGET
   /// Determine if the CUDA device is sufficient to run the kernel
   bool sufficient() {
     //
@@ -2042,7 +2032,6 @@ struct TestbedImpl {
 
     return true;
   }
-  #endif
 
   /// Executes one test
   bool run(
@@ -2053,14 +2042,11 @@ struct TestbedImpl {
     )
   {
 
-    using namespace cutlass;
-#ifndef SYCL_INTEL_TARGET
     // Fail test if insufficient CUDA device
     if (!sufficient()) {
       std::cout << "Test failed due to insufficient CUDA device." << std::endl;
       return false;
     }
-#endif
 
     if (!this->initialize(problem_shapes, alpha, beta)) {
       std::cerr << "Initialization failed \n";
@@ -2123,12 +2109,7 @@ struct TestbedImpl {
     cudaError_t result;
     status = gemm_op.initialize(arguments, workspace.get());
     status = gemm_op.run();
-#if defined SYCL_INTEL_TARGET
-    result = cudaSuccess;
-    compat::wait();
-#else
     result = cudaDeviceSynchronize();
-#endif
     if (result != cudaSuccess) {
       EXPECT_EQ(result, cudaSuccess) << "Error at Kernel Sync.";
       return false;
@@ -2225,13 +2206,7 @@ bool TestAll(double alpha = 1.0, double beta = 0.0, CheckEquality check_relative
 
   Testbed3x<Gemm, ActivationFunctor> testbed(check_relative_equality, ScalarLoc::ON_DEVICE, VectorScale::DISABLED);
 
-  int max_alignment = 0;
-  // TODO(codeplay): unhardcode max_alignment
-#if defined SYCL_INTEL_TARGET
-  max_alignment = 32;
-#else
-  max_alignment = std::max(Gemm::kAlignmentA, Gemm::kAlignmentB);
-#endif
+  int max_alignment = std::max(Gemm::kAlignmentA, Gemm::kAlignmentB);
   std::vector<int> problem_size_m = {max_alignment, 512 - 3 * max_alignment};
   std::vector<int> problem_size_n = {max_alignment, 512 - 2 * max_alignment};
 
@@ -2425,104 +2400,6 @@ bool TestSmallFusion(double alpha = 1.0, double beta = 0.0,
     VectorScale vector_scale_mode = VectorScale::ENABLED) {
   return TestSmall<Gemm, force_legacy_epilogue, apply_alignment_offset>(
     alpha, beta, check_relative_equality, use_device_scalars, vector_scale_mode);
-}
-
-/// Test for Group GEMM with heterogeneous problem shapes
-template <typename Gemm>
-bool TestXeGrouped(
-    const std::vector<cutlass::gemm::GemmCoord>& problem_sizes, 
-    double alpha = 1.0,
-    double beta = 0.0
-) {
-  using ProblemShapeType = typename Gemm::GemmKernel::ProblemShape;
-  using UnderlyingProblemShape = typename ProblemShapeType::UnderlyingProblemShape;
-  using ElementScalar = typename detail::ElementScalarType<Gemm, float>::Type;
-
-  Testbed3x<Gemm> testbed(CheckEquality::RELATIVE, ScalarLoc::ON_DEVICE, VectorScale::DISABLED);
-
-  bool passed = true;
-  try {
-    // Create host and device arrays from vector of problem sizes
-    std::vector<UnderlyingProblemShape> problem_sizes_host;
-    for (const auto& coord : problem_sizes) {
-      problem_sizes_host.push_back(UnderlyingProblemShape{coord.m(), coord.n(), coord.k()});
-    }
-    
-    // Allocate device memory and copy
-    cutlass::DeviceAllocation<UnderlyingProblemShape> problem_sizes_device;
-    problem_sizes_device.reset(problem_sizes_host.size());
-    problem_sizes_device.copy_from_host(problem_sizes_host.data(), problem_sizes_host.size());
-    
-    // Create GroupProblemShape
-    ProblemShapeType group_problem_shape;
-    group_problem_shape.num_groups = (int32_t)problem_sizes_host.size();
-    group_problem_shape.problem_shapes = problem_sizes_device.get();
-    group_problem_shape.host_problem_shapes = problem_sizes_host.data();
-    
-    passed = testbed.run(
-        group_problem_shape,
-        ElementScalar(alpha),
-        ElementScalar(beta)
-    );
-  }
-  catch (std::exception const& e) {
-    EXPECT_TRUE(false) << "TestXeGrouped: testbed.run threw an exception: " << e.what();
-    return false;
-  }
-  catch (...) {
-    EXPECT_TRUE(false) << "TestXeGrouped: testbed.run threw an unknown exception";
-    return false;
-  }
-
-  EXPECT_TRUE(passed) << "TestXeGrouped: testbed.run failed for " 
-                      << problem_sizes.size() << " grouped problems"
-                      << ", alpha: " << alpha << ", beta: " << beta;
-  
-  return passed;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-
-// TestAll template function overload for grouped GEMM testing with explicit problem sizes
-template <typename Gemm, template <class T> class ActivationFunctor = cutlass::epilogue::thread::Identity>
-bool TestAll(const std::vector<cutlass::gemm::GemmCoord>& problem_sizes,
-             double alpha = 1.0, double beta = 0.0) {
-  using ElementScalar = typename Gemm::EpilogueOutputOp::ElementScalar;
-  using ProblemShapeType = typename Gemm::GemmKernel::ProblemShape;
-
-  if (problem_sizes.empty()) {
-    std::cerr << "Error: problem_sizes vector cannot be empty.\n";
-    return false;
-  }
-
-  Testbed3x<Gemm, ActivationFunctor> testbed(
-    CheckEquality::RELATIVE,
-    ScalarLoc::ON_DEVICE,
-    VectorScale::DISABLED
-  );
-
-  // Convert vector of GemmCoord to the format needed by grouped GEMM testbed
-  std::vector<typename ProblemShapeType::UnderlyingProblemShape> problem_sizes_host;
-  for (const auto& coord : problem_sizes) {
-    problem_sizes_host.push_back({coord.m(), coord.n(), coord.k()});
-  }
-
-  cutlass::DeviceAllocation<typename ProblemShapeType::UnderlyingProblemShape> problem_sizes_device;
-  problem_sizes_device.reset(problem_sizes_host.size());
-  problem_sizes_device.copy_from_host(problem_sizes_host.data());
-
-
-  bool passed = testbed.run(
-    ProblemShapeType{
-      static_cast<int>(problem_sizes_host.size()),
-      problem_sizes_device.get(),
-      problem_sizes_host.data()
-    },
-    cutlass::from_real<ElementScalar>(alpha),
-    cutlass::from_real<ElementScalar>(beta)
-  );
-
-  return passed;
 }
 
 } // namespace device

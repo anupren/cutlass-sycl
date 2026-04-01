@@ -1,4 +1,4 @@
-# Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Redistribution and use in source and binary forms, with or without
@@ -89,6 +89,16 @@ endif()
 
 if (NOT CUTLASS_ENABLE_SYCL)
   include(${CMAKE_CURRENT_SOURCE_DIR}/CUDA.cmake)
+endif()
+
+# nvcc supports response files with --options-file but some tools like clangd
+# might choke on it. Thus provide a way to control the use of this feature.
+set(CUTLASS_CUDA_USE_RESPONSE_FILE ON CACHE BOOL "Enable CUDA response files for includes, libraries, and objects")
+
+if(NOT CUTLASS_CUDA_USE_RESPONSE_FILE)
+  set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_INCLUDES 0)
+  set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_LIBRARIES 0)
+  set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_OBJECTS 0)
 endif()
 
 if (CUDA_VERSION VERSION_LESS 11.3 AND NOT CUTLASS_ENABLE_SYCL)
@@ -365,6 +375,10 @@ if (WIN32)
 
   # Disable warning on Unicode characters
   list(APPEND CUTLASS_CUDA_NVCC_FLAGS -Xcompiler=/wd4819)
+
+  # Disable warning on macro expansion producing 'defined' has undefined behavior
+  list(APPEND CUTLASS_CUDA_NVCC_FLAGS -Xcompiler=/wd5105)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5105")
 
   # Disable excess x86 floating point precision that can lead to results being labeled incorrectly
   list(APPEND CUTLASS_CUDA_NVCC_FLAGS -Xcompiler=/fp:strict)
@@ -719,8 +733,8 @@ if (MSVC)
   #
   # See https://developercommunity.visualstudio.com/t/msvc-incorrectly-defines-cplusplus/139261
 
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler  /Zc:__cplusplus")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /Zc:preprocessor")
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler /Zc:__cplusplus -Xcompiler /Zc:preprocessor")
 
 endif()
 
@@ -913,9 +927,9 @@ if(NOT (WIN32 OR CUTLASS_ENABLE_SYCL OR CUTLASS_CLANG_DEVICE_COMPILE))
   # Add common library search paths so executables and libraries can load and run
   # without LD_LIBRARY_PATH being set.
   link_libraries(
-    "-Wl,-rpath,'$ORIGIN'"
-    "-Wl,-rpath,'$ORIGIN/../lib64'"
-    "-Wl,-rpath,'$ORIGIN/../lib'"
+    "-Wl,-rpath,'$$ORIGIN'"
+    "-Wl,-rpath,'$$ORIGIN/../lib64'"
+    "-Wl,-rpath,'$$ORIGIN/../lib'"
     "-Wl,-rpath,'${CUDA_TOOLKIT_ROOT_DIR}/lib64'"
     "-Wl,-rpath,'${CUDA_TOOLKIT_ROOT_DIR}/lib'"
     ${CMAKE_DL_LIBS}
@@ -1043,7 +1057,7 @@ function(cutlass_add_executable_tests NAME TARGET)
 
      install(
        FILES ${__RESULT_CACHE_FILE}
-       DESTINATION ${CUTLASS_TEST_INSTALL_BINDIR}/
+       DESTINATION ${CUTLASS_TEST_INSTALL_BINDIR}
        )
 
     endif()
@@ -1171,7 +1185,7 @@ function(cutlass_generate_profiler_tests NAME)
 
   install(
     FILES ${CUTLASS_PROFILER_REGRESSION_LIST_FILE}
-    DESTINATION ${CMAKE_INSTALL_INFODIR}/cutlass/
+    DESTINATION ${CMAKE_INSTALL_INFODIR}/cutlass
     RENAME profiler_regressions.csv
     )
 
@@ -1233,6 +1247,8 @@ function(cutlass_generate_profiler_tests NAME)
     endif()
 
   endforeach()
+  message(STATUS "Finished processing ${CUTLASS_PROFILER_REGRESSION_LIST_FILE} to generate profiler-based tests.")
+
 
   cutlass_add_executable_tests(
     ${NAME} cutlass_profiler
@@ -1298,7 +1314,7 @@ if (CUTLASS_INSTALL_TESTS)
 
   install(
     FILES "${CMAKE_BINARY_DIR}/ctest/CTestTestfile.cmake"
-    DESTINATION "${CUTLASS_TEST_INSTALL_PREFIX}/"
+    DESTINATION "${CUTLASS_TEST_INSTALL_PREFIX}"
     )
 
 endif()
@@ -1321,13 +1337,13 @@ install(
   FILES
     ${CMAKE_CURRENT_BINARY_DIR}/NvidiaCutlassConfig.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/NvidiaCutlassConfigVersion.cmake
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NvidiaCutlass/
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NvidiaCutlass
   )
 
 install(
   EXPORT NvidiaCutlass
   NAMESPACE nvidia::cutlass::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NvidiaCutlass/
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NvidiaCutlass
   FILE NvidiaCutlassTargets.cmake
   )
 

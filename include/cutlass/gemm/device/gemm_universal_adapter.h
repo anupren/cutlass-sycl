@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,10 +59,6 @@
 // 3.x
 #include "cutlass/gemm/kernel/gemm_universal.hpp"
 
-#if defined(CUTLASS_ENABLE_SYCL)
-#include "cutlass/util/sycl_event_manager.hpp"
-#endif
-
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass::gemm::device {
@@ -114,6 +109,13 @@ constexpr int stages_member(DispatchPolicy) {
     return 0;
   }
 }
+
+template <class GemmKernel, class = void>
+struct IsDistGemmKernel : cute::false_type { };
+
+template <typename GemmKernel>
+struct IsDistGemmKernel<GemmKernel, cute::void_t<typename GemmKernel::TP>>
+    : cute::true_type { };
 
 } // namespace detail
 
@@ -337,7 +339,6 @@ public:
 
       CUTLASS_ASSERT(cuda_adapter == nullptr);
 
-#if !defined(CUTLASS_ENABLE_SYCL)
       if (smem_size >= (48 << 10)) {
         CUTLASS_TRACE_HOST("  Setting smem size to " << smem_size);
         cudaError_t result = cudaFuncSetAttribute(
@@ -350,7 +351,6 @@ public:
           return Status::kErrorInternal;
         }
       }
-#endif
     }
     return Status::kSuccess;
   }
@@ -380,11 +380,6 @@ public:
     dim3 const block = GemmKernel::get_block_shape();
     dim3 const grid = get_grid_shape(params);
 
-#if defined(CUTLASS_ENABLE_SYCL)
-    const compat::dim3 sycl_block(block.x, block.y, block.z);
-    const compat::dim3 sycl_grid(grid.x, grid.y, grid.z);
-#endif
-
     // configure smem size and carveout
     int smem_size = GemmKernel::SharedStorageSize;
 
@@ -394,7 +389,6 @@ public:
 #if (CUTLASS_DEBUG_TRACE_LEVEL > 1)
       CUTLASS_TRACE_HOST("GemmUniversal::run: Use extended launch API");
 #endif
-#if !defined(CUTLASS_ENABLE_SYCL)
       [[maybe_unused]] constexpr bool is_static_1x1x1 =
         cute::is_static_v<typename GemmKernel::DispatchPolicy::ClusterShape> and
         cute::size(typename GemmKernel::DispatchPolicy::ClusterShape{}) == 1;
@@ -409,8 +403,13 @@ public:
                     || GemmKernel::ArchTag::kMinComputeCapability == 103
                     ) {
         if constexpr (!cute::is_static_v<typename GemmKernel::DispatchPolicy::ClusterShape>) {
-          fallback_cluster = params.hw_info.cluster_shape_fallback;
-          cluster = params.hw_info.cluster_shape;
+          if constexpr (detail::IsDistGemmKernel<GemmKernel>::value) {
+            fallback_cluster = params.base.hw_info.cluster_shape_fallback;
+            cluster = params.base.hw_info.cluster_shape;
+          } else {
+            fallback_cluster = params.hw_info.cluster_shape_fallback;
+            cluster = params.hw_info.cluster_shape;
+          }
         }
       }
       
@@ -522,7 +521,6 @@ public:
         }
         
       }
-#endif
     }
     else {
       launch_result = Status::kSuccess;
@@ -547,52 +545,6 @@ public:
       }
       else {
         CUTLASS_ASSERT(cuda_adapter == nullptr);
-#if defined(CUTLASS_ENABLE_SYCL)
-        sycl::queue q = stream ? *stream : compat::get_default_queue();
-#if !defined(SYCL_EXT_ONEAPI_WORK_GROUP_SCRATCH_MEMORY)
-        using namespace compat::experimental;
-        if constexpr (cute::is_same_v<DispatchPolicy, MainloopDeviceAgnostic>) {
-          auto event = launch<device_kernel<GemmKernel>>(launch_policy{
-            sycl_grid, sycl_block, local_mem_size{static_cast<std::size_t>(smem_size)}
-          }, q, params);
-          EventManager::getInstance().addEvent(event);
-        } else {
-          auto event = launch<device_kernel<GemmKernel>>(launch_policy{
-            sycl_grid, sycl_block, local_mem_size{static_cast<std::size_t>(smem_size)}
-#if defined(SYCL_INTEL_TARGET)
-            , kernel_properties{sycl_exp::sub_group_size<DispatchPolicy::SubgroupSize>}
-#endif
-          }, q, params);
-          EventManager::getInstance().addEvent(event);
-        }
-#else
-#if defined (SYCL_INTEL_TARGET)
-        constexpr bool allow_subgroup_size_prop = true;
-#else
-        constexpr bool allow_subgroup_size_prop = false;
-#endif
-        auto kernel_props = [] {
-          constexpr bool is_device_agnostic =
-            cute::is_same_v<DispatchPolicy, MainloopDeviceAgnostic>;
-          if constexpr (!allow_subgroup_size_prop or is_device_agnostic) {
-            using EmptyProperties = decltype(sycl::ext::oneapi::experimental::properties());
-            return compat::experimental::kernel_properties<EmptyProperties>{};
-          } else {
-            return compat::experimental::kernel_properties{
-              sycl::ext::oneapi::experimental::sub_group_size<DispatchPolicy::SubgroupSize>
-            };
-          }
-        }();
-        compat::experimental::launch_properties launch_props {
-          sycl::ext::oneapi::experimental::work_group_scratch_size(smem_size),
-        };
-        compat::experimental::launch_policy policy{
-          sycl_grid, sycl_block, launch_props, kernel_props
-        };
-        auto event = compat::experimental::launch<device_kernel<GemmKernel>, GemmKernel>(policy, q, params);
-        EventManager::getInstance().addEvent(event);
-#endif // !defined(SYCL_EXT_ONEAPI_WORK_GROUP_SCRATCH_MEMORY)
-#else
 #if (CUTLASS_DEBUG_TRACE_LEVEL > 1)
         CUTLASS_TRACE_HOST("GemmUniversal::run: Launching kernel with cutlass::kernel_launch");
 #endif
@@ -605,7 +557,6 @@ public:
         else {
           CUTLASS_TRACE_HOST("GemmUniversal::run: cutlass::kernel_launch reports success");
         }
-#endif
 #endif
       }
     }

@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,7 +34,7 @@
 
 #pragma once
 
-#if !defined(__CUDACC_RTC__) && !defined(CUTLASS_ENABLE_SYCL)
+#if !defined(__CUDACC_RTC__)
 #include "cuda.h"
 #include "cuda_runtime.h"
 
@@ -66,10 +65,7 @@ zero_workspace(
 
     CUTLASS_TRACE_HOST("  clearing workspace");
 
-#if defined (CUTLASS_ENABLE_SYCL)
-    auto q = stream ? *stream : compat::get_default_queue();
-    compat::memset_async(workspace, 0, workspace_size, q);
-#elif defined(CUTLASS_ENABLE_CUDA_HOST_ADAPTER) && CUTLASS_ENABLE_CUDA_HOST_ADAPTER
+#if defined(CUTLASS_ENABLE_CUDA_HOST_ADAPTER) && CUTLASS_ENABLE_CUDA_HOST_ADAPTER
     //
     // Use the cuda host adapter
     //
@@ -125,6 +121,8 @@ fill_workspace(void* workspace, T fill_value, size_t fill_count, cudaStream_t st
 #else
     CUdeviceptr d_workspace = reinterpret_cast<CUdeviceptr>(workspace);
     CUresult result = CUDA_SUCCESS;
+
+#ifndef __QNX__
     if (sizeof(T) == 4) {
       result = cuMemsetD32Async(d_workspace, reinterpret_cast<uint32_t&>(fill_value), fill_count, stream);
     }
@@ -134,6 +132,7 @@ fill_workspace(void* workspace, T fill_value, size_t fill_count, cudaStream_t st
     else if (sizeof(T) == 1) {
       result = cuMemsetD8Async(d_workspace, reinterpret_cast<uint8_t&>(fill_value), fill_count, stream);
     }
+#endif
 
     if (CUDA_SUCCESS != result) {
       const char** error_string_ptr = nullptr;

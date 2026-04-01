@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * Copyright (C) 2025 Intel Corporation, All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -39,11 +39,7 @@
 #include "cutlass/detail/helper_macros.hpp"
 #include <cutlass/gpu_generics.h>
 
-#if (__CUDACC_VER_MAJOR__ >= 13)
-  #define CUDA_STD_HEADER(header) <cccl/cuda/std/header>
-#else
-  #define CUDA_STD_HEADER(header) <cuda/std/header>
-#endif
+#define CUDA_STD_HEADER(header) <cuda/std/header>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

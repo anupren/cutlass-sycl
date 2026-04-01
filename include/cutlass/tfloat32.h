@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * Copyright (C) 2025 Intel Corporation, All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -527,12 +527,12 @@ tfloat32_t operator--(tfloat32_t & lhs, int) {
 //
 
 CUTLASS_HOST_DEVICE
-cutlass::tfloat32_t operator ""_tf32(long double x) {
+cutlass::tfloat32_t operator""_tf32(long double x) {
   return cutlass::tfloat32_t(float(x));
 }
 
 CUTLASS_HOST_DEVICE
-cutlass::tfloat32_t operator ""_tf32(unsigned long long int x) {
+cutlass::tfloat32_t operator""_tf32(unsigned long long int x) {
   return cutlass::tfloat32_t(int(x));
 }
 

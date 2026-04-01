@@ -1,6 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * Copyright (C) 2025 Intel Corporation, All rights reserved.
+ * Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,17 +28,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  **************************************************************************************************/
-#if !defined(CUTLASS_ENABLE_SYCL)
 #include <cuda_runtime_api.h>
-#endif
 
 #include "cutlass_unit_test.h"
-
-#if defined(CUTLASS_ENABLE_SYCL)
-#include <sycl/sycl.hpp>
-#endif
-
-#if !defined(CUTLASS_ENABLE_SYCL)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -81,9 +72,6 @@ std::ostream &operator<<(std::ostream &out, cudaDeviceProp const &deviceProperti
 
   return out;
 }
-
-#endif
-
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Sets flags for Unit test
@@ -92,40 +80,6 @@ void FilterArchitecture() {
 
   int const kMaxDevice = 999;
 
-#if defined(CUTLASS_ENABLE_SYCL)
-  using namespace sycl::ext::oneapi::experimental;
-
-  std::map<architecture, int> arch_map {
-    {architecture::nvidia_gpu_sm_50, 50},
-    {architecture::nvidia_gpu_sm_52, 52},
-    {architecture::nvidia_gpu_sm_53, 53},
-    {architecture::nvidia_gpu_sm_60, 60},
-    {architecture::nvidia_gpu_sm_61, 61},
-    {architecture::nvidia_gpu_sm_62, 62},
-    {architecture::nvidia_gpu_sm_70, 70},
-    {architecture::nvidia_gpu_sm_72, 72},
-    {architecture::nvidia_gpu_sm_75, 75},
-    {architecture::nvidia_gpu_sm_80, 80},
-    {architecture::nvidia_gpu_sm_86, 86},
-    {architecture::nvidia_gpu_sm_89, 89},
-    {architecture::nvidia_gpu_sm_90, 90},
-    {architecture::nvidia_gpu_sm_90a, 90},
-    {architecture::intel_gpu_pvc, 0},
-    {architecture::intel_gpu_bmg_g21, 1},
-    {architecture::intel_gpu_bmg_g31, 1}
-  };
-  auto device_architecture =
-        compat::get_default_queue().get_device().get_info<info::device::architecture>();
-  if (device_architecture == architecture::unknown) {
-    throw std::runtime_error("Encountered Unknown architecture.");
-  }
-
-  if(auto search_result = arch_map.find(device_architecture); search_result == arch_map.end()) {
-    throw std::runtime_error("Detected Architecture is not supported.");
-  }
-
-  const int deviceMajorMinor = arch_map[device_architecture];
-#else
   cudaError_t err;
 
   int cudaDeviceId;
@@ -144,7 +98,6 @@ void FilterArchitecture() {
   }
 
   int deviceMajorMinor = deviceProperties.major * 10 + deviceProperties.minor;
-#endif
 
   // Defines text filters for each GEMM kernel based on minimum supported compute capability
   struct {
@@ -167,9 +120,7 @@ void FilterArchitecture() {
     { "SM80*",                      80, kMaxDevice},
     { "SM89*",                      89, 89},
     { "SM90*",                      90, 90},
-    { "SM100*",                    100, 100},
-    { "XE_*",                        0, 1},
-    { "XE2_*",                       1, 1},
+    { "SM100*",                    100, 100}, 
     { "*sm100_*",                  100, 100},
     { 0, 0, false }
   };
